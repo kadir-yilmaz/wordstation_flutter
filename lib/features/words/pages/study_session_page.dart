@@ -37,6 +37,7 @@ class _StudySessionPageState extends ConsumerState<StudySessionPage>
   @override
   void initState() {
     super.initState();
+    HardwareKeyboard.instance.addHandler(_handleKeyEvent);
 
     _flipAnimationController = AnimationController(
       vsync: this,
@@ -60,10 +61,77 @@ class _StudySessionPageState extends ConsumerState<StudySessionPage>
 
   @override
   void dispose() {
+    HardwareKeyboard.instance.removeHandler(_handleKeyEvent);
     _flipAnimationController.dispose();
     _searchController.dispose();
     _exampleScrollController.dispose();
     super.dispose();
+  }
+
+  bool _handleKeyEvent(KeyEvent event) {
+    if (event is! KeyDownEvent) return false;
+    if (!mounted) return false;
+
+    // Sayfa ekranda aktif/görünür değilse (üstüne başka sayfa açılmışsa) yakalama
+    if (ModalRoute.of(context)?.isCurrent == false) return false;
+
+    // Arama kutusu veya metin alanında yazıyorsa klavye kısayollarını devre dışı bırak
+    final isEditingText =
+        FocusManager.instance.primaryFocus?.context?.widget is EditableText;
+    if (isEditingText) return false;
+
+    final studyState = ref.read(studyControllerProvider);
+    final studyNotifier = ref.read(studyControllerProvider.notifier);
+    final hasWords = studyState.words.isNotEmpty;
+    final currentIndex = studyState.currentIndex;
+    final totalCount = studyState.totalCount;
+    final hasPrev = hasWords && (studyState.isRandom || currentIndex > 0);
+    final hasNext = hasWords && (studyState.isRandom || currentIndex < totalCount - 1);
+
+    // Sağ Yön Tuşu: Sonraki Kelime
+    if (event.logicalKey == LogicalKeyboardKey.arrowRight) {
+      if (hasNext) {
+        HapticFeedback.lightImpact();
+        studyNotifier.next();
+        return true;
+      }
+    }
+    // Sol Yön Tuşu: Önceki Kelime
+    else if (event.logicalKey == LogicalKeyboardKey.arrowLeft) {
+      if (hasPrev) {
+        HapticFeedback.lightImpact();
+        studyNotifier.prev();
+        return true;
+      }
+    }
+    // Yukarı Yön Tuşu veya Space: Kartı Döndür
+    else if (event.logicalKey == LogicalKeyboardKey.arrowUp ||
+        event.logicalKey == LogicalKeyboardKey.space) {
+      if (hasWords) {
+        HapticFeedback.selectionClick();
+        studyNotifier.flip();
+        return true;
+      }
+    }
+    // Aşağı Yön Tuşu: Rastgele (Random) Modunu Aç/Kapat
+    else if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
+      if (hasWords) {
+        HapticFeedback.mediumImpact();
+        studyNotifier.toggleRandom();
+        return true;
+      }
+    }
+    // Nokta (.) Tuşu: Sesi Oynat (TTS)
+    else if (event.logicalKey == LogicalKeyboardKey.period ||
+        event.logicalKey == LogicalKeyboardKey.numpadDecimal) {
+      if (hasWords) {
+        HapticFeedback.lightImpact();
+        studyNotifier.speakCurrent();
+        return true;
+      }
+    }
+
+    return false;
   }
 
   void _handleFlip(bool isFlipped) {
@@ -221,65 +289,10 @@ class _StudySessionPageState extends ConsumerState<StudySessionPage>
     final hasPrev = hasWords && (studyState.isRandom || currentIndex > 0);
     final hasNext = hasWords && (studyState.isRandom || currentIndex < totalCount - 1);
 
-    return Focus(
-      autofocus: true,
-      onKeyEvent: (node, event) {
-        if (event is KeyDownEvent) {
-          final isEditingText =
-              FocusManager.instance.primaryFocus?.context?.widget is EditableText;
-          if (isEditingText) {
-            return KeyEventResult.ignored;
-          }
-
-          // Sağ Yön Tuşu: Sonraki Kelime
-          if (event.logicalKey == LogicalKeyboardKey.arrowRight) {
-            if (hasNext) {
-              HapticFeedback.lightImpact();
-              studyNotifier.next();
-              return KeyEventResult.handled;
-            }
-          }
-          // Sol Yön Tuşu: Önceki Kelime
-          else if (event.logicalKey == LogicalKeyboardKey.arrowLeft) {
-            if (hasPrev) {
-              HapticFeedback.lightImpact();
-              studyNotifier.prev();
-              return KeyEventResult.handled;
-            }
-          }
-          // Yukarı Yön Tuşu veya Space: Kartı Döndür
-          else if (event.logicalKey == LogicalKeyboardKey.arrowUp ||
-              event.logicalKey == LogicalKeyboardKey.space) {
-            if (hasWords) {
-              HapticFeedback.selectionClick();
-              studyNotifier.flip();
-              return KeyEventResult.handled;
-            }
-          }
-          // Aşağı Yön Tuşu: Rastgele (Random) Modunu Aç/Kapat
-          else if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
-            if (hasWords) {
-              HapticFeedback.mediumImpact();
-              studyNotifier.toggleRandom();
-              return KeyEventResult.handled;
-            }
-          }
-          // Nokta (.) Tuşu: Sesi Oynat (TTS)
-          else if (event.logicalKey == LogicalKeyboardKey.period ||
-              event.logicalKey == LogicalKeyboardKey.numpadDecimal) {
-            if (hasWords) {
-              HapticFeedback.lightImpact();
-              studyNotifier.speakCurrent();
-              return KeyEventResult.handled;
-            }
-          }
-        }
-        return KeyEventResult.ignored;
-      },
-      child: Scaffold(
-        resizeToAvoidBottomInset: false,
-        backgroundColor:
-            isDark ? AppColors.darkBackground : AppColors.lightBackground,
+    return Scaffold(
+      resizeToAvoidBottomInset: false,
+      backgroundColor:
+          isDark ? AppColors.darkBackground : AppColors.lightBackground,
       appBar: AppBar(
         leadingWidth: 90,
         leading: TextButton.icon(
@@ -784,7 +797,6 @@ class _StudySessionPageState extends ConsumerState<StudySessionPage>
       ),
     ),
   ),
-),
 );
 }
 
