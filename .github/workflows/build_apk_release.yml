@@ -79,7 +79,8 @@ jobs:
         run: |
           if [ -n "$ANDROID_KEYSTORE_BASE64" ]; then
             echo "Keystore GitHub Secret'tan yükleniyor..."
-            mkdir -p ~/.android
+            mkdir -p ~/.android android/app
+            echo "$ANDROID_KEYSTORE_BASE64" | base64 --decode > android/app/debug.keystore
             echo "$ANDROID_KEYSTORE_BASE64" | base64 --decode > ~/.android/debug.keystore
             echo "✅ Keystore basariyla olusturuldu (SHA-1 korundu)."
           else
