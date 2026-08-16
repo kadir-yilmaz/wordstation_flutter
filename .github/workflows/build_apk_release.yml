@@ -1,0 +1,124 @@
+name: Build & Release Android APK
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Uygulama Versiyonu (örn: 1.0.0)'
+        required: true
+        default: '1.0.0'
+        type: string
+      build_number:
+        description: 'Build Numarası (Boş bırakılırsa otomatik artan run numarası kullanılır)'
+        required: false
+        default: ''
+        type: string
+      release_notes:
+        description: 'Sürüm Notları (Release Notes)'
+        required: false
+        default: 'Hata düzeltmeleri ve performans iyileştirmeleri.'
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+          cache: 'gradle'
+
+      - name: Set up Flutter with Cache
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          cache: true
+          cache-key: 'flutter-:os:-:channel:-:version:-:arch:'
+          cache-path: '${{ runner.tool_cache }}/flutter'
+
+      - name: Cache Pub Dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.pub-cache
+          key: ${{ runner.os }}-pub-${{ hashFiles('pubspec.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-pub-
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Run unit & widget tests
+        run: flutter test
+
+      - name: Determine Version and Build Number
+        id: versioning
+        run: |
+          VERSION="${{ inputs.version }}"
+          BUILD_NUM="${{ inputs.build_number }}"
+          if [ -z "$BUILD_NUM" ]; then
+            BUILD_NUM="${{ github.run_number }}"
+          fi
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "build_number=$BUILD_NUM" >> $GITHUB_OUTPUT
+          echo "Uygulama Versiyonu: $VERSION (Build: $BUILD_NUM)"
+
+      - name: Build Android APK (Release)
+        run: |
+          flutter build apk --release \
+            --build-name="${{ steps.versioning.outputs.version }}" \
+            --build-number="${{ steps.versioning.outputs.build_number }}"
+
+      - name: Prepare APK Asset
+        run: |
+          VERSION="${{ steps.versioning.outputs.version }}"
+          mkdir -p release_assets
+          cp build/app/outputs/flutter-apk/app-release.apk release_assets/wordstation-v${VERSION}.apk
+          echo "APK hazırlandı: release_assets/wordstation-v${VERSION}.apk"
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION="${{ steps.versioning.outputs.version }}"
+          TAG="v${VERSION}"
+          TITLE="WordStation v${VERSION} (Build ${{ steps.versioning.outputs.build_number }})"
+          NOTES="${{ inputs.release_notes }}"
+          
+          # Eğer aynı tag varsa release'i güncelle veya oluştur
+          gh release create "$TAG" release_assets/wordstation-v${VERSION}.apk \
+            --title "$TITLE" \
+            --notes "$NOTES" \
+            --target "${{ github.sha }}" || \
+          gh release upload "$TAG" release_assets/wordstation-v${VERSION}.apk --clobber
+
+          echo "✅ Release başarıyla oluşturuldu: $TAG"
+
+      - name: Cleanup Old Releases (Keep Latest 10)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "🧹 Eski sürümler kontrol ediliyor (En son 10 sürüm saklanır)..."
+          
+          # En son 10 sürüm dışındakilerin tag isimlerini al
+          OLD_RELEASES=$(gh release list --limit 100 --json tagName --jq '.[10:][].tagName')
+          
+          if [ -z "$OLD_RELEASES" ]; then
+            echo "Silinecek eski sürüm bulunamadı (10 veya daha az sürüm mevcut)."
+          else
+            for tag in $OLD_RELEASES; do
+              echo "🗑️ Eski sürüm siliniyor: $tag"
+              gh release delete "$tag" --yes --cleanup-tag || true
+            done
+            echo "✅ Eski sürümler temizlendi."
+          fi
