@@ -1,5 +1,4 @@
 import 'dart:math';
-import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -591,94 +590,83 @@ class _StudySessionPageState extends ConsumerState<StudySessionPage>
   }
 
   Widget _buildSynonymBadges(bool isDark, StudyState studyState) {
-    return SizedBox(
-      height: 42,
-      child: studyState.synonymBadges.isNotEmpty
-          ? ScrollConfiguration(
-              behavior: ScrollConfiguration.of(context).copyWith(
-                dragDevices: {
-                  PointerDeviceKind.touch,
-                  PointerDeviceKind.mouse,
-                  PointerDeviceKind.trackpad,
-                  PointerDeviceKind.stylus,
-                },
-              ),
-              child: ListView.separated(
-                controller: _synonymsScrollController,
-                scrollDirection: Axis.horizontal,
-                physics: const BouncingScrollPhysics(),
-                clipBehavior: Clip.none,
-                itemCount: studyState.synonymBadges.length,
-                separatorBuilder: (_, _) => const SizedBox(width: 8),
-                itemBuilder: (context, idx) {
-                  final badge = studyState.synonymBadges[idx];
+    if (studyState.synonymBadges.isEmpty) {
+      return Container(
+        height: 38,
+        width: double.infinity,
+        decoration: BoxDecoration(
+          color: isDark ? const Color(0xFF2C2C2E) : const Color(0xFFE9E9EB),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Center(
+          child: Text(
+            'No synonyms available for this word.',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w500,
+              color: isDark ? AppColors.darkTextMuted : const Color(0xFF8E8E93),
+            ),
+          ),
+        ),
+      );
+    }
 
-                  return Container(
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        colors: badge.gradient,
-                        begin: Alignment.centerLeft,
-                        end: Alignment.centerRight,
-                      ),
-                      borderRadius: BorderRadius.circular(12),
-                      boxShadow: [
-                        BoxShadow(
-                          color: badge.gradient.first.withValues(alpha: 0.3),
-                          blurRadius: 6,
-                          offset: const Offset(0, 2),
-                        ),
-                      ],
+    return ConstrainedBox(
+      constraints: const BoxConstraints(maxHeight: 90),
+      child: Scrollbar(
+        controller: _synonymsScrollController,
+        thumbVisibility: false,
+        radius: const Radius.circular(6),
+        child: SingleChildScrollView(
+          controller: _synonymsScrollController,
+          physics: const BouncingScrollPhysics(),
+          child: Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: studyState.synonymBadges.map((badge) {
+              return Container(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: badge.gradient,
+                    begin: Alignment.centerLeft,
+                    end: Alignment.centerRight,
+                  ),
+                  borderRadius: BorderRadius.circular(10),
+                  boxShadow: [
+                    BoxShadow(
+                      color: badge.gradient.first.withValues(alpha: 0.25),
+                      blurRadius: 5,
+                      offset: const Offset(0, 2),
                     ),
-                    child: Material(
-                      color: Colors.transparent,
-                      child: InkWell(
-                        borderRadius: BorderRadius.circular(12),
-                        onTap: () {
-                          showWordDetailModal(context, word: badge.word);
-                        },
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 16, vertical: 10),
-                          child: Center(
-                            child: Text(
-                              badge.word.en,
-                              style: const TextStyle(
-                                fontSize: 14,
-                                fontWeight: FontWeight.w600,
-                                color: Colors.white,
-                              ),
-                            ),
-                          ),
+                  ],
+                ),
+                child: Material(
+                  color: Colors.transparent,
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(10),
+                    onTap: () {
+                      showWordDetailModal(context, word: badge.word);
+                    },
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 14, vertical: 7),
+                      child: Text(
+                        badge.word.en,
+                        style: const TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.white,
                         ),
                       ),
                     ),
-                  );
-                },
-              ),
-            )
-          : Container(
-              height: 42,
-              width: double.infinity,
-              decoration: BoxDecoration(
-                color: isDark
-                    ? const Color(0xFF2C2C2E)
-                    : const Color(0xFFE9E9EB),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Center(
-                child: Text(
-                  'No synonyms available for this word.',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontSize: 13.5,
-                    fontWeight: FontWeight.w500,
-                    color: isDark
-                        ? AppColors.darkTextMuted
-                        : const Color(0xFF8E8E93),
                   ),
                 ),
-              ),
-            ),
+              );
+            }).toList(),
+          ),
+        ),
+      ),
     );
   }
 
