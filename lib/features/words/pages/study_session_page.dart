@@ -437,31 +437,37 @@ class _StudySessionPageState extends ConsumerState<StudySessionPage>
 
                         const SizedBox(width: 24),
 
-                        // Right Column: Search Bar, Synonym Badges, Word Card, Index, Slider, Control Buttons
+                        // Right Column: Search Bar, Synonym Badges, Word Card, Index, Slider, Control Buttons (Vertically centered with balanced spacing)
                         Expanded(
                           flex: 5,
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.stretch,
-                            children: [
-                              _buildSearchBar(isDark, studyNotifier),
-                              const SizedBox(height: 10),
-                              _buildSynonymBadges(isDark, studyState),
-                              const SizedBox(height: 14),
-                              SizedBox(
-                                height: 200,
-                                child: _buildWordCardFlip(
-                                    hasWords, currentWord, studyNotifier),
+                          child: Center(
+                            child: SingleChildScrollView(
+                              physics: const BouncingScrollPhysics(),
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                crossAxisAlignment: CrossAxisAlignment.stretch,
+                                children: [
+                                  _buildSearchBar(isDark, studyNotifier),
+                                  const SizedBox(height: 12),
+                                  _buildSynonymBadges(isDark, studyState),
+                                  const SizedBox(height: 18),
+                                  SizedBox(
+                                    height: 230,
+                                    child: _buildWordCardFlip(
+                                        hasWords, currentWord, studyNotifier),
+                                  ),
+                                  const SizedBox(height: 16),
+                                  _buildIndexLabel(
+                                      isDark, hasWords, currentIndex, totalCount),
+                                  const SizedBox(height: 8),
+                                  _buildProgressSlider(isDark, hasWords,
+                                      currentIndex, totalCount, studyNotifier),
+                                  const SizedBox(height: 16),
+                                  _buildControlButtons(isDark, hasWords, hasPrev,
+                                      hasNext, studyState, studyNotifier),
+                                ],
                               ),
-                              const SizedBox(height: 14),
-                              _buildIndexLabel(
-                                  isDark, hasWords, currentIndex, totalCount),
-                              const SizedBox(height: 6),
-                              _buildProgressSlider(isDark, hasWords,
-                                  currentIndex, totalCount, studyNotifier),
-                              const SizedBox(height: 12),
-                              _buildControlButtons(isDark, hasWords, hasPrev,
-                                  hasNext, studyState, studyNotifier),
-                            ],
+                            ),
                           ),
                         ),
                       ],
@@ -648,7 +654,7 @@ class _StudySessionPageState extends ConsumerState<StudySessionPage>
       bool isDark, bool hasWords, WordModel? currentWord) {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+      padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 20),
       decoration: BoxDecoration(
         color: isDark ? AppColors.darkSurface : const Color(0xFFF2F2F7),
         borderRadius: BorderRadius.circular(24),
@@ -679,10 +685,10 @@ class _StudySessionPageState extends ConsumerState<StudySessionPage>
                   ? TextAlign.start
                   : TextAlign.center,
               style: TextStyle(
-                fontSize: 14.5,
+                fontSize: 15.5,
                 fontStyle: FontStyle.italic,
                 fontWeight: FontWeight.w400,
-                height: 1.45,
+                height: 1.55,
                 color: hasWords &&
                         (currentWord?.example != null &&
                             currentWord!.example!.trim().isNotEmpty)
