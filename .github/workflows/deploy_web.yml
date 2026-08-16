@@ -62,7 +62,7 @@ jobs:
           $username = $secrets.username
           $password = $secrets.password
 
-          Write-Host "WebDeploy ile yayinlama basliyor: $server:$port ($site)..."
+          Write-Host "WebDeploy ile yayinlama basliyor: $($server):$($port) ($($site))..."
 
           $msdeployPath = "C:\Program Files\IIS\Microsoft Web Deploy V3\msdeploy.exe"
           if (-not (Test-Path $msdeployPath)) {
@@ -78,8 +78,8 @@ jobs:
           $destUrl = "https://$($server):$($port)/msdeploy.axd?site=$($site)"
 
           & $msdeployPath -verb:sync `
-            -source:contentPath="$sourcePath" `
-            -dest:contentPath="$site",computerName="$destUrl",userName="$username",password="$password",authType="Basic" `
+            "-source:contentPath=$sourcePath" `
+            "-dest:contentPath=$site,computerName=$destUrl,userName=$username,password=$password,authType=Basic" `
             -allowUntrusted
 
           Write-Host "Basariyla yayinlandi! -> https://$($secrets.domain)"
