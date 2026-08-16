@@ -1,4 +1,5 @@
 import 'dart:math';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -33,6 +34,7 @@ class _StudySessionPageState extends ConsumerState<StudySessionPage>
   late Animation<double> _flipAnimation;
   final TextEditingController _searchController = TextEditingController();
   final ScrollController _exampleScrollController = ScrollController();
+  final ScrollController _synonymsScrollController = ScrollController();
 
   @override
   void initState() {
@@ -65,6 +67,7 @@ class _StudySessionPageState extends ConsumerState<StudySessionPage>
     _flipAnimationController.dispose();
     _searchController.dispose();
     _exampleScrollController.dispose();
+    _synonymsScrollController.dispose();
     super.dispose();
   }
 
@@ -591,56 +594,67 @@ class _StudySessionPageState extends ConsumerState<StudySessionPage>
     return SizedBox(
       height: 42,
       child: studyState.synonymBadges.isNotEmpty
-          ? ListView.separated(
-              scrollDirection: Axis.horizontal,
-              physics: const BouncingScrollPhysics(),
-              clipBehavior: Clip.none,
-              itemCount: studyState.synonymBadges.length,
-              separatorBuilder: (_, _) => const SizedBox(width: 8),
-              itemBuilder: (context, idx) {
-                final badge = studyState.synonymBadges[idx];
+          ? ScrollConfiguration(
+              behavior: ScrollConfiguration.of(context).copyWith(
+                dragDevices: {
+                  PointerDeviceKind.touch,
+                  PointerDeviceKind.mouse,
+                  PointerDeviceKind.trackpad,
+                  PointerDeviceKind.stylus,
+                },
+              ),
+              child: ListView.separated(
+                controller: _synonymsScrollController,
+                scrollDirection: Axis.horizontal,
+                physics: const BouncingScrollPhysics(),
+                clipBehavior: Clip.none,
+                itemCount: studyState.synonymBadges.length,
+                separatorBuilder: (_, _) => const SizedBox(width: 8),
+                itemBuilder: (context, idx) {
+                  final badge = studyState.synonymBadges[idx];
 
-                return Container(
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: badge.gradient,
-                      begin: Alignment.centerLeft,
-                      end: Alignment.centerRight,
-                    ),
-                    borderRadius: BorderRadius.circular(12),
-                    boxShadow: [
-                      BoxShadow(
-                        color: badge.gradient.first.withValues(alpha: 0.3),
-                        blurRadius: 6,
-                        offset: const Offset(0, 2),
+                  return Container(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: badge.gradient,
+                        begin: Alignment.centerLeft,
+                        end: Alignment.centerRight,
                       ),
-                    ],
-                  ),
-                  child: Material(
-                    color: Colors.transparent,
-                    child: InkWell(
                       borderRadius: BorderRadius.circular(12),
-                      onTap: () {
-                        showWordDetailModal(context, word: badge.word);
-                      },
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 16, vertical: 10),
-                        child: Center(
-                          child: Text(
-                            badge.word.en,
-                            style: const TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w600,
-                              color: Colors.white,
+                      boxShadow: [
+                        BoxShadow(
+                          color: badge.gradient.first.withValues(alpha: 0.3),
+                          blurRadius: 6,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
+                    ),
+                    child: Material(
+                      color: Colors.transparent,
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(12),
+                        onTap: () {
+                          showWordDetailModal(context, word: badge.word);
+                        },
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 16, vertical: 10),
+                          child: Center(
+                            child: Text(
+                              badge.word.en,
+                              style: const TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w600,
+                                color: Colors.white,
+                              ),
                             ),
                           ),
                         ),
                       ),
                     ),
-                  ),
-                );
-              },
+                  );
+                },
+              ),
             )
           : Container(
               height: 42,
