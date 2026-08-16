@@ -448,26 +448,30 @@ class _StudySessionPageState extends ConsumerState<StudySessionPage>
 
                         const SizedBox(width: 24),
 
-                        // Right Column: Word Card, Index, Slider, Control Buttons
+                        // Right Column: Word Card, Index, Slider, Control Buttons (Vertically centered, standard size)
                         Expanded(
                           flex: 5,
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.stretch,
-                            children: [
-                              Expanded(
-                                child: _buildWordCardFlip(
-                                    hasWords, currentWord, studyNotifier),
-                              ),
-                              const SizedBox(height: 14),
-                              _buildIndexLabel(
-                                  isDark, hasWords, currentIndex, totalCount),
-                              const SizedBox(height: 6),
-                              _buildProgressSlider(isDark, hasWords,
-                                  currentIndex, totalCount, studyNotifier),
-                              const SizedBox(height: 10),
-                              _buildControlButtons(isDark, hasWords, hasPrev,
-                                  hasNext, studyState, studyNotifier),
-                            ],
+                          child: Center(
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                SizedBox(
+                                  height: 210,
+                                  child: _buildWordCardFlip(
+                                      hasWords, currentWord, studyNotifier),
+                                ),
+                                const SizedBox(height: 14),
+                                _buildIndexLabel(
+                                    isDark, hasWords, currentIndex, totalCount),
+                                const SizedBox(height: 6),
+                                _buildProgressSlider(isDark, hasWords,
+                                    currentIndex, totalCount, studyNotifier),
+                                const SizedBox(height: 12),
+                                _buildControlButtons(isDark, hasWords, hasPrev,
+                                    hasNext, studyState, studyNotifier),
+                              ],
+                            ),
                           ),
                         ),
                       ],
