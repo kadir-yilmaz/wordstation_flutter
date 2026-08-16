@@ -1,1 +1,13 @@
-{}
+{
+  "git.repositoryScanMaxDepth": 1,
+  "git.scanRepositories": [
+    "."
+  ],
+  "git.ignoredRepositories": [
+    "${workspaceFolder}/build"
+  ],
+  "files.exclude": {
+    "**/build": true,
+    "**/.dart_tool": true
+  }
+}
