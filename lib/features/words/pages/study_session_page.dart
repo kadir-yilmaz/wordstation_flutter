@@ -420,7 +420,7 @@ class _StudySessionPageState extends ConsumerState<StudySessionPage>
               final isDesktopLayout = constraints.maxWidth >= 680;
 
               if (isDesktopLayout) {
-                // Desktop / Web Two-Column Layout
+                // Desktop / Web Two-Column Layout (Left: Example solo, Right: Search, Synonyms, Card, Controls)
                 return ResponsiveContent(
                   maxWidth: 1100,
                   child: Padding(
@@ -428,7 +428,16 @@ class _StudySessionPageState extends ConsumerState<StudySessionPage>
                     child: Row(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        // Left Column: Search Bar, Synonym Badges, Example Box
+                        // Left Column: Example Box (Solo)
+                        Expanded(
+                          flex: 5,
+                          child: _buildExampleContainer(
+                              isDark, hasWords, currentWord),
+                        ),
+
+                        const SizedBox(width: 24),
+
+                        // Right Column: Search Bar, Synonym Badges, Word Card, Index, Slider, Control Buttons
                         Expanded(
                           flex: 5,
                           child: Column(
@@ -438,40 +447,21 @@ class _StudySessionPageState extends ConsumerState<StudySessionPage>
                               const SizedBox(height: 10),
                               _buildSynonymBadges(isDark, studyState),
                               const SizedBox(height: 14),
-                              Expanded(
-                                child: _buildExampleContainer(
-                                    isDark, hasWords, currentWord),
+                              SizedBox(
+                                height: 200,
+                                child: _buildWordCardFlip(
+                                    hasWords, currentWord, studyNotifier),
                               ),
+                              const SizedBox(height: 14),
+                              _buildIndexLabel(
+                                  isDark, hasWords, currentIndex, totalCount),
+                              const SizedBox(height: 6),
+                              _buildProgressSlider(isDark, hasWords,
+                                  currentIndex, totalCount, studyNotifier),
+                              const SizedBox(height: 12),
+                              _buildControlButtons(isDark, hasWords, hasPrev,
+                                  hasNext, studyState, studyNotifier),
                             ],
-                          ),
-                        ),
-
-                        const SizedBox(width: 24),
-
-                        // Right Column: Word Card, Index, Slider, Control Buttons (Vertically centered, standard size)
-                        Expanded(
-                          flex: 5,
-                          child: Center(
-                            child: Column(
-                              mainAxisSize: MainAxisSize.min,
-                              crossAxisAlignment: CrossAxisAlignment.stretch,
-                              children: [
-                                SizedBox(
-                                  height: 210,
-                                  child: _buildWordCardFlip(
-                                      hasWords, currentWord, studyNotifier),
-                                ),
-                                const SizedBox(height: 14),
-                                _buildIndexLabel(
-                                    isDark, hasWords, currentIndex, totalCount),
-                                const SizedBox(height: 6),
-                                _buildProgressSlider(isDark, hasWords,
-                                    currentIndex, totalCount, studyNotifier),
-                                const SizedBox(height: 12),
-                                _buildControlButtons(isDark, hasWords, hasPrev,
-                                    hasNext, studyState, studyNotifier),
-                              ],
-                            ),
                           ),
                         ),
                       ],
@@ -529,7 +519,6 @@ class _StudySessionPageState extends ConsumerState<StudySessionPage>
   Widget _buildSearchBar(bool isDark, StudyController studyNotifier) {
     return Container(
       height: 42,
-      margin: const EdgeInsets.only(top: 4, bottom: 4),
       decoration: BoxDecoration(
         color: isDark ? AppColors.darkSurface : const Color(0xFFE9E9EB),
         borderRadius: BorderRadius.circular(12),
