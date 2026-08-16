@@ -229,6 +229,73 @@ class AuthService {
     }
   }
 
+  // Manual Token Refresh (used by Auth Inspector page & manual triggers)
+  Future<TokenResponse> refreshTokenManual() async {
+    try {
+      final currentToken = await storage.getAccessToken();
+      final refreshToken = await storage.getRefreshToken();
+
+      if (refreshToken == null || refreshToken.isEmpty) {
+        throw Exception('Refresh token bulunamadı.');
+      }
+
+      log('🔵 [AuthService.refreshTokenManual] Requesting token refresh...');
+      final refreshDio = Dio(
+        BaseOptions(
+          baseUrl: ApiConstants.baseUrl,
+          connectTimeout: ApiConstants.connectTimeout,
+          receiveTimeout: ApiConstants.receiveTimeout,
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+          },
+        ),
+      );
+
+      final response = await refreshDio.post(
+        ApiConstants.refreshToken,
+        data: {
+          'token': currentToken ?? '',
+          'refreshToken': refreshToken,
+        },
+      );
+
+      if (response.statusCode == 200 && response.data != null) {
+        final data = response.data;
+        final newAccessToken = (data['token'] ?? data['accessToken'] ?? '') as String;
+        final newRefreshToken = (data['refreshToken'] ?? refreshToken) as String;
+        final userId = data['userId']?.toString();
+        final email = data['email']?.toString();
+
+        if (newAccessToken.isNotEmpty) {
+          await storage.saveTokens(
+            accessToken: newAccessToken,
+            refreshToken: newRefreshToken,
+            userId: userId,
+            email: email,
+          );
+
+          log('🟢 [AuthService.refreshTokenManual] Token refreshed successfully.');
+
+          return TokenResponse(
+            accessToken: newAccessToken,
+            refreshToken: newRefreshToken,
+            userId: userId,
+            email: email,
+          );
+        }
+      }
+      throw Exception('Geçersiz sunucu yanıtı.');
+    } on DioException catch (e) {
+      log('🔴 [AuthService.refreshTokenManual] DioException: $e');
+      final message = _extractErrorMessage(e);
+      throw Exception(message);
+    } catch (e) {
+      log('🔴 [AuthService.refreshTokenManual] Exception: $e');
+      throw Exception(e.toString().replaceAll('Exception: ', ''));
+    }
+  }
+
   // Logout
   Future<void> logout() async {
     log('🔵 [AuthService.logout] Logging out user...');
