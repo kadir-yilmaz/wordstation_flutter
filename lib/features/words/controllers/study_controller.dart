@@ -251,12 +251,6 @@ class StudyController extends StateNotifier<StudyState> {
 
   void next() {
     if (state.words.isEmpty) return;
-    if (state.isRandom) {
-      if (state.isPlayingTts) _tts.stop();
-      _goToRandom();
-      return;
-    }
-
     if (state.currentIndex >= state.words.length - 1) {
       return;
     }
@@ -278,12 +272,6 @@ class StudyController extends StateNotifier<StudyState> {
 
   void prev() {
     if (state.words.isEmpty) return;
-    if (state.isRandom) {
-      if (state.isPlayingTts) _tts.stop();
-      _goToRandom();
-      return;
-    }
-
     if (state.currentIndex <= 0) {
       return;
     }
@@ -324,13 +312,7 @@ class StudyController extends StateNotifier<StudyState> {
 
   void toggleRandom() {
     HapticFeedback.mediumImpact();
-    // Immediate responsive jump on every tap
-    if (state.isRandom) {
-      _goToRandom();
-    } else {
-      state = state.copyWith(isRandom: true);
-      _goToRandom();
-    }
+    _goToRandom();
   }
 
   void seekTo(int index) {

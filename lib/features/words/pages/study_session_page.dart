@@ -93,8 +93,8 @@ class _StudySessionPageState extends ConsumerState<StudySessionPage>
     final hasWords = studyState.words.isNotEmpty;
     final currentIndex = studyState.currentIndex;
     final totalCount = studyState.totalCount;
-    final hasPrev = hasWords && (studyState.isRandom || currentIndex > 0);
-    final hasNext = hasWords && (studyState.isRandom || currentIndex < totalCount - 1);
+    final hasPrev = hasWords && currentIndex > 0;
+    final hasNext = hasWords && currentIndex < totalCount - 1;
 
     // Sağ Yön Tuşu / D: Sonraki Kelime
     if (event.logicalKey == LogicalKeyboardKey.arrowRight ||
@@ -301,8 +301,8 @@ class _StudySessionPageState extends ConsumerState<StudySessionPage>
     final currentWord = hasWords ? studyState.currentWord : null;
     final currentIndex = hasWords ? studyState.currentIndex : 0;
     final totalCount = studyState.totalCount;
-    final hasPrev = hasWords && (studyState.isRandom || currentIndex > 0);
-    final hasNext = hasWords && (studyState.isRandom || currentIndex < totalCount - 1);
+    final hasPrev = hasWords && currentIndex > 0;
+    final hasNext = hasWords && currentIndex < totalCount - 1;
 
     return Scaffold(
       resizeToAvoidBottomInset: false,
