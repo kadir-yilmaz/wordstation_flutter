@@ -415,390 +415,472 @@ class _StudySessionPageState extends ConsumerState<StudySessionPage>
         behavior: HitTestBehavior.translucent,
         onTap: () => FocusScope.of(context).unfocus(),
         child: SafeArea(
-          child: ResponsiveContent(
-            maxWidth: 680,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                // 1. Search Bar (Swift replica)
-                Container(
-                  height: 42,
-                  margin: const EdgeInsets.only(top: 6, bottom: 8),
-                  decoration: BoxDecoration(
-                    color: isDark ? AppColors.darkSurface : const Color(0xFFE9E9EB),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: TextField(
-                    controller: _searchController,
-                    onTapOutside: (event) {
-                      FocusScope.of(context).unfocus();
-                    },
-                    onChanged: (val) {
-                      studyNotifier.onSearchChanged(val);
-                      setState(() {});
-                    },
-                    decoration: InputDecoration(
-                      hintText: 'Search for a word...',
-                      hintStyle: TextStyle(
-                        fontSize: 15,
-                        color: isDark ? AppColors.darkTextMuted : const Color(0xFF8E8E93),
-                      ),
-                      prefixIcon: Icon(
-                        Icons.search_rounded,
-                        size: 20,
-                        color: isDark ? AppColors.darkTextMuted : const Color(0xFF8E8E93),
-                      ),
-                      suffixIcon: _searchController.text.isNotEmpty
-                          ? IconButton(
-                              icon: const Icon(Icons.clear_rounded, size: 18),
-                              padding: EdgeInsets.zero,
-                              constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
-                              color: isDark ? AppColors.darkTextMuted : const Color(0xFF8E8E93),
-                              onPressed: () {
-                                _searchController.clear();
-                                studyNotifier.onSearchChanged('');
-                                setState(() {});
-                              },
-                            )
-                          : null,
-                      border: InputBorder.none,
-                      contentPadding: const EdgeInsets.symmetric(vertical: 10),
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final isDesktopLayout = constraints.maxWidth >= 680;
+
+              if (isDesktopLayout) {
+                // Desktop / Web Two-Column Layout
+                return ResponsiveContent(
+                  maxWidth: 1100,
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(24, 12, 24, 20),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        // Left Column: Search Bar, Synonym Badges, Example Box
+                        Expanded(
+                          flex: 5,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              _buildSearchBar(isDark, studyNotifier),
+                              const SizedBox(height: 10),
+                              _buildSynonymBadges(isDark, studyState),
+                              const SizedBox(height: 14),
+                              Expanded(
+                                child: _buildExampleContainer(
+                                    isDark, hasWords, currentWord),
+                              ),
+                            ],
+                          ),
+                        ),
+
+                        const SizedBox(width: 24),
+
+                        // Right Column: Word Card, Index, Slider, Control Buttons
+                        Expanded(
+                          flex: 5,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              Expanded(
+                                child: _buildWordCardFlip(
+                                    hasWords, currentWord, studyNotifier),
+                              ),
+                              const SizedBox(height: 14),
+                              _buildIndexLabel(
+                                  isDark, hasWords, currentIndex, totalCount),
+                              const SizedBox(height: 6),
+                              _buildProgressSlider(isDark, hasWords,
+                                  currentIndex, totalCount, studyNotifier),
+                              const SizedBox(height: 10),
+                              _buildControlButtons(isDark, hasWords, hasPrev,
+                                  hasNext, studyState, studyNotifier),
+                            ],
+                          ),
+                        ),
+                      ],
                     ),
                   ),
+                );
+              }
+
+              // Mobile Layout (Single Column Stack)
+              return ResponsiveContent(
+                maxWidth: 680,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      _buildSearchBar(isDark, studyNotifier),
+                      const SizedBox(height: 6),
+                      _buildSynonymBadges(isDark, studyState),
+                      const SizedBox(height: 10),
+                      Expanded(
+                        flex: 5,
+                        child: _buildExampleContainer(
+                            isDark, hasWords, currentWord),
+                      ),
+                      const SizedBox(height: 14),
+                      Expanded(
+                        flex: 5,
+                        child: _buildWordCardFlip(
+                            hasWords, currentWord, studyNotifier),
+                      ),
+                      const SizedBox(height: 10),
+                      _buildIndexLabel(
+                          isDark, hasWords, currentIndex, totalCount),
+                      const SizedBox(height: 6),
+                      _buildProgressSlider(isDark, hasWords, currentIndex,
+                          totalCount, studyNotifier),
+                      const SizedBox(height: 8),
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 20),
+                        child: _buildControlButtons(isDark, hasWords, hasPrev,
+                            hasNext, studyState, studyNotifier),
+                      ),
+                    ],
+                  ),
                 ),
+              );
+            },
+          ),
+        ),
+      ),
+    );
+  }
 
-              // 2. Synonym Badges (Height matching search bar: 42)
-              SizedBox(
-                height: 42,
-                child: studyState.synonymBadges.isNotEmpty
-                    ? ListView.separated(
-                        scrollDirection: Axis.horizontal,
-                        physics: const BouncingScrollPhysics(),
-                        clipBehavior: Clip.none,
-                        itemCount: studyState.synonymBadges.length,
-                        separatorBuilder: (_, _) => const SizedBox(width: 8),
-                        itemBuilder: (context, idx) {
-                          final badge = studyState.synonymBadges[idx];
+  Widget _buildSearchBar(bool isDark, StudyController studyNotifier) {
+    return Container(
+      height: 42,
+      margin: const EdgeInsets.only(top: 4, bottom: 4),
+      decoration: BoxDecoration(
+        color: isDark ? AppColors.darkSurface : const Color(0xFFE9E9EB),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: TextField(
+        controller: _searchController,
+        onTapOutside: (event) {
+          FocusScope.of(context).unfocus();
+        },
+        onChanged: (val) {
+          studyNotifier.onSearchChanged(val);
+          setState(() {});
+        },
+        decoration: InputDecoration(
+          hintText: 'Search for a word...',
+          hintStyle: TextStyle(
+            fontSize: 15,
+            color: isDark ? AppColors.darkTextMuted : const Color(0xFF8E8E93),
+          ),
+          prefixIcon: Icon(
+            Icons.search_rounded,
+            size: 20,
+            color: isDark ? AppColors.darkTextMuted : const Color(0xFF8E8E93),
+          ),
+          suffixIcon: _searchController.text.isNotEmpty
+              ? IconButton(
+                  icon: const Icon(Icons.clear_rounded, size: 18),
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+                  color: isDark ? AppColors.darkTextMuted : const Color(0xFF8E8E93),
+                  onPressed: () {
+                    _searchController.clear();
+                    studyNotifier.onSearchChanged('');
+                    setState(() {});
+                  },
+                )
+              : null,
+          border: InputBorder.none,
+          contentPadding: const EdgeInsets.symmetric(vertical: 10),
+        ),
+      ),
+    );
+  }
 
-                          return Container(
-                            decoration: BoxDecoration(
-                              gradient: LinearGradient(
-                                colors: badge.gradient,
-                                begin: Alignment.centerLeft,
-                                end: Alignment.centerRight,
-                              ),
-                              borderRadius: BorderRadius.circular(12),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: badge.gradient.first
-                                      .withValues(alpha: 0.3),
-                                  blurRadius: 6,
-                                  offset: const Offset(0, 2),
-                                ),
-                              ],
-                            ),
-                            child: Material(
-                              color: Colors.transparent,
-                              child: InkWell(
-                                borderRadius: BorderRadius.circular(12),
-                                onTap: () {
-                                  showWordDetailModal(context, word: badge.word);
-                                },
-                                child: Padding(
-                                  padding: const EdgeInsets.symmetric(
-                                      horizontal: 16, vertical: 10),
-                                  child: Center(
-                                    child: Text(
-                                      badge.word.en,
-                                      style: const TextStyle(
-                                        fontSize: 14,
-                                        fontWeight: FontWeight.w600,
-                                        color: Colors.white,
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ),
-                          );
-                        },
-                      )
-                    : Container(
-                        height: 42,
-                        width: double.infinity,
-                        decoration: BoxDecoration(
-                          color: isDark
-                              ? const Color(0xFF2C2C2E)
-                              : const Color(0xFFE9E9EB),
-                          borderRadius: BorderRadius.circular(12),
-                        ),
+  Widget _buildSynonymBadges(bool isDark, StudyState studyState) {
+    return SizedBox(
+      height: 42,
+      child: studyState.synonymBadges.isNotEmpty
+          ? ListView.separated(
+              scrollDirection: Axis.horizontal,
+              physics: const BouncingScrollPhysics(),
+              clipBehavior: Clip.none,
+              itemCount: studyState.synonymBadges.length,
+              separatorBuilder: (_, _) => const SizedBox(width: 8),
+              itemBuilder: (context, idx) {
+                final badge = studyState.synonymBadges[idx];
+
+                return Container(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: badge.gradient,
+                      begin: Alignment.centerLeft,
+                      end: Alignment.centerRight,
+                    ),
+                    borderRadius: BorderRadius.circular(12),
+                    boxShadow: [
+                      BoxShadow(
+                        color: badge.gradient.first.withValues(alpha: 0.3),
+                        blurRadius: 6,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                  child: Material(
+                    color: Colors.transparent,
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(12),
+                      onTap: () {
+                        showWordDetailModal(context, word: badge.word);
+                      },
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 16, vertical: 10),
                         child: Center(
                           child: Text(
-                            'No synonyms available for this word.',
-                            textAlign: TextAlign.center,
-                            style: TextStyle(
-                              fontSize: 13.5,
-                              fontWeight: FontWeight.w500,
-                              color: isDark
-                                  ? AppColors.darkTextMuted
-                                  : const Color(0xFF8E8E93),
+                            badge.word.en,
+                            style: const TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.white,
                             ),
                           ),
                         ),
                       ),
-              ),
-              const SizedBox(height: 10),
-
-              // 3. Example Container (TOP - Clean matching Swift StudyVC with SelectableText)
-              Expanded(
-                flex: 5,
-                child: Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-                  decoration: BoxDecoration(
-                    color: isDark ? AppColors.darkSurface : const Color(0xFFF2F2F7),
-                    borderRadius: BorderRadius.circular(24),
-                    border: Border.all(
-                      color: isDark
-                          ? AppColors.darkBorder
-                          : const Color(0xFFE5E5EA),
-                      width: 1.5,
                     ),
                   ),
-                  child: Scrollbar(
-                    controller: _exampleScrollController,
-                    thumbVisibility: true,
-                    radius: const Radius.circular(8),
-                    child: SingleChildScrollView(
-                      controller: _exampleScrollController,
-                      physics: const BouncingScrollPhysics(),
-                      child: Padding(
-                        padding: const EdgeInsets.only(right: 6),
-                        child: SelectableText(
-                          hasWords
-                              ? ((currentWord?.example != null &&
-                                      currentWord!.example!.trim().isNotEmpty)
-                                  ? currentWord.example!
-                                  : 'No example sentence available.')
-                              : 'Aradığınız kelime bulunamadı.',
-                          textAlign: hasWords &&
-                                  (currentWord?.example != null &&
-                                      currentWord!.example!.trim().isNotEmpty)
-                              ? TextAlign.start
-                              : TextAlign.center,
-                          style: TextStyle(
-                            fontSize: 14.5,
-                            fontStyle: FontStyle.italic,
-                            fontWeight: FontWeight.w400,
-                            height: 1.45,
-                            color: hasWords &&
-                                    (currentWord?.example != null &&
-                                        currentWord!.example!.trim().isNotEmpty)
-                                ? (isDark
-                                    ? AppColors.darkTextPrimary
-                                    : Colors.black87)
-                                : (isDark
-                                    ? AppColors.darkTextMuted
-                                    : const Color(0xFF8E8E93)),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
+                );
+              },
+            )
+          : Container(
+              height: 42,
+              width: double.infinity,
+              decoration: BoxDecoration(
+                color: isDark
+                    ? const Color(0xFF2C2C2E)
+                    : const Color(0xFFE9E9EB),
+                borderRadius: BorderRadius.circular(12),
               ),
-
-              const SizedBox(height: 14),
-
-              // 4. Word Card (MIDDLE / BOTTOM - Matching Swift StudyVC)
-              Expanded(
-                flex: 5,
-                child: GestureDetector(
-                  onTap: hasWords
-                      ? () {
-                          HapticFeedback.selectionClick();
-                          studyNotifier.flip();
-                        }
-                      : null,
-                  child: AnimatedBuilder(
-                    animation: _flipAnimation,
-                    builder: (context, child) {
-                      final angle = _flipAnimation.value * pi;
-                      final isBackVisible = angle >= (pi / 2);
-
-                      final cardText = hasWords
-                          ? (isBackVisible ? currentWord!.tr : currentWord!.en)
-                          : (isBackVisible ? 'Sonuç Bulunamadı' : 'No Results');
-
-                      return Transform(
-                        transform: Matrix4.identity()
-                          ..setEntry(3, 2, 0.0012)
-                          ..rotateY(angle),
-                        alignment: Alignment.center,
-                        child: isBackVisible
-                            ? Transform(
-                                transform: Matrix4.identity()..rotateY(pi),
-                                alignment: Alignment.center,
-                                child: _buildWordCard(
-                                  text: cardText,
-                                  isPink: true,
-                                ),
-                              )
-                            : _buildWordCard(
-                                text: cardText,
-                                isPink: false,
-                              ),
-                      );
-                    },
-                  ),
-                ),
-              ),
-
-              const SizedBox(height: 10),
-
-              // 5. Index Label (Centered right below word card)
-              Center(
+              child: Center(
                 child: Text(
-                  hasWords ? '${currentIndex + 1}/$totalCount' : '0/0',
+                  'No synonyms available for this word.',
+                  textAlign: TextAlign.center,
                   style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w700,
+                    fontSize: 13.5,
+                    fontWeight: FontWeight.w500,
                     color: isDark
-                        ? AppColors.darkTextSecondary
+                        ? AppColors.darkTextMuted
                         : const Color(0xFF8E8E93),
                   ),
                 ),
               ),
+            ),
+    );
+  }
 
-              const SizedBox(height: 6),
-
-              // 6. Progress Slider (Always visible to maintain layout stability, disabled when totalCount <= 1)
-              SliderTheme(
-                data: SliderTheme.of(context).copyWith(
-                  activeTrackColor: const Color(0xFFE5E5EA),
-                  inactiveTrackColor: isDark
-                      ? AppColors.darkBorder
-                      : const Color(0xFFE5E5EA),
-                  disabledActiveTrackColor: isDark
-                      ? AppColors.darkBorder
-                      : const Color(0xFFE5E5EA),
-                  disabledInactiveTrackColor: isDark
-                      ? AppColors.darkBorder
-                      : const Color(0xFFE5E5EA),
-                  thumbColor: Colors.white,
-                  disabledThumbColor: Colors.white.withValues(alpha: 0.6),
-                  overlayColor: Colors.transparent,
-                  trackHeight: 4,
-                  thumbShape: const RoundSliderThumbShape(
-                    enabledThumbRadius: 10,
-                    disabledThumbRadius: 10,
-                    elevation: 3,
-                  ),
-                ),
-                child: Slider(
-                  value: (hasWords && totalCount > 1)
-                      ? currentIndex.toDouble().clamp(0.0, (totalCount - 1).toDouble())
-                      : 0.0,
-                  min: 0.0,
-                  max: (hasWords && totalCount > 1)
-                      ? (totalCount - 1).toDouble()
-                      : 1.0,
-                  divisions: (hasWords && totalCount > 1)
-                      ? (totalCount - 1)
-                      : 1,
-                  onChanged: (hasWords && totalCount > 1)
-                      ? (val) {
-                          studyNotifier.seekTo(val.round());
-                        }
-                      : null,
-                ),
+  Widget _buildExampleContainer(
+      bool isDark, bool hasWords, WordModel? currentWord) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+      decoration: BoxDecoration(
+        color: isDark ? AppColors.darkSurface : const Color(0xFFF2F2F7),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(
+          color: isDark ? AppColors.darkBorder : const Color(0xFFE5E5EA),
+          width: 1.5,
+        ),
+      ),
+      child: Scrollbar(
+        controller: _exampleScrollController,
+        thumbVisibility: true,
+        radius: const Radius.circular(8),
+        child: SingleChildScrollView(
+          controller: _exampleScrollController,
+          physics: const BouncingScrollPhysics(),
+          child: Padding(
+            padding: const EdgeInsets.only(right: 6),
+            child: SelectableText(
+              hasWords
+                  ? ((currentWord?.example != null &&
+                          currentWord!.example!.trim().isNotEmpty)
+                      ? currentWord.example!
+                      : 'No example sentence available.')
+                  : 'Aradığınız kelime bulunamadı.',
+              textAlign: hasWords &&
+                      (currentWord?.example != null &&
+                          currentWord!.example!.trim().isNotEmpty)
+                  ? TextAlign.start
+                  : TextAlign.center,
+              style: TextStyle(
+                fontSize: 14.5,
+                fontStyle: FontStyle.italic,
+                fontWeight: FontWeight.w400,
+                height: 1.45,
+                color: hasWords &&
+                        (currentWord?.example != null &&
+                            currentWord!.example!.trim().isNotEmpty)
+                    ? (isDark
+                        ? AppColors.darkTextPrimary
+                        : Colors.black87)
+                    : (isDark
+                        ? AppColors.darkTextMuted
+                        : const Color(0xFF8E8E93)),
               ),
-
-              const SizedBox(height: 8),
-
-              // 7. Control Buttons Bar (4 Buttons in a row - Swift replica)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 20),
-                child: Row(
-                  children: [
-                    // [ ← Prev ]
-                    Expanded(
-                      child: _buildActionButton(
-                        text: '← Prev',
-                        backgroundColor: isDark
-                            ? AppColors.darkSurface
-                            : const Color(0xFFF2F2F7),
-                        textColor: isDark ? Colors.white : Colors.black,
-                        isEnabled: hasPrev,
-                        onTap: () {
-                          HapticFeedback.lightImpact();
-                          studyNotifier.prev();
-                        },
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-
-                    // [ Random ] (Vibrant Orange)
-                    Expanded(
-                      child: _buildActionButton(
-                        text: 'Random',
-                        backgroundColor: const Color(0xFFFF9500),
-                        textColor: Colors.white,
-                        isBold: true,
-                        isEnabled: hasWords,
-                        onTap: () {
-                          HapticFeedback.mediumImpact();
-                          studyNotifier.toggleRandom();
-                        },
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-
-                    // [ 🔊 ] (Vibrant Blue Speaker)
-                    Expanded(
-                      child: _buildActionButton(
-                        icon: studyState.isPlayingTts
-                            ? Icons.graphic_eq_rounded
-                            : Icons.volume_up_rounded,
-                        backgroundColor: const Color(0xFF007AFF),
-                        textColor: Colors.white,
-                        isEnabled: hasWords,
-                        onTap: () {
-                          HapticFeedback.lightImpact();
-                          studyNotifier.speakCurrent();
-                        },
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-
-                    // [ Next → ]
-                    Expanded(
-                      child: _buildActionButton(
-                        text: 'Next →',
-                        backgroundColor: isDark
-                            ? AppColors.darkSurface
-                            : const Color(0xFFF2F2F7),
-                        textColor: isDark ? Colors.white : Colors.black,
-                        isEnabled: hasNext,
-                        onTap: () {
-                          HapticFeedback.lightImpact();
-                          studyNotifier.next();
-                        },
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
+            ),
           ),
         ),
       ),
-    ),
-  ),
-);
-}
+    );
+  }
+
+  Widget _buildWordCardFlip(
+      bool hasWords, WordModel? currentWord, StudyController studyNotifier) {
+    return GestureDetector(
+      onTap: hasWords
+          ? () {
+              HapticFeedback.selectionClick();
+              studyNotifier.flip();
+            }
+          : null,
+      child: AnimatedBuilder(
+        animation: _flipAnimation,
+        builder: (context, child) {
+          final angle = _flipAnimation.value * pi;
+          final isBackVisible = angle >= (pi / 2);
+
+          final cardText = hasWords
+              ? (isBackVisible ? currentWord!.tr : currentWord!.en)
+              : (isBackVisible ? 'Sonuç Bulunamadı' : 'No Results');
+
+          return Transform(
+            transform: Matrix4.identity()
+              ..setEntry(3, 2, 0.0012)
+              ..rotateY(angle),
+            alignment: Alignment.center,
+            child: isBackVisible
+                ? Transform(
+                    transform: Matrix4.identity()..rotateY(pi),
+                    alignment: Alignment.center,
+                    child: _buildWordCard(
+                      text: cardText,
+                      isPink: true,
+                    ),
+                  )
+                : _buildWordCard(
+                    text: cardText,
+                    isPink: false,
+                  ),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildIndexLabel(
+      bool isDark, bool hasWords, int currentIndex, int totalCount) {
+    return Center(
+      child: Text(
+        hasWords ? '${currentIndex + 1}/$totalCount' : '0/0',
+        style: TextStyle(
+          fontSize: 16,
+          fontWeight: FontWeight.w700,
+          color: isDark
+              ? AppColors.darkTextSecondary
+              : const Color(0xFF8E8E93),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildProgressSlider(bool isDark, bool hasWords, int currentIndex,
+      int totalCount, StudyController studyNotifier) {
+    return SliderTheme(
+      data: SliderTheme.of(context).copyWith(
+        activeTrackColor: const Color(0xFFE5E5EA),
+        inactiveTrackColor:
+            isDark ? AppColors.darkBorder : const Color(0xFFE5E5EA),
+        disabledActiveTrackColor:
+            isDark ? AppColors.darkBorder : const Color(0xFFE5E5EA),
+        disabledInactiveTrackColor:
+            isDark ? AppColors.darkBorder : const Color(0xFFE5E5EA),
+        thumbColor: Colors.white,
+        disabledThumbColor: Colors.white.withValues(alpha: 0.6),
+        overlayColor: Colors.transparent,
+        trackHeight: 4,
+        thumbShape: const RoundSliderThumbShape(
+          enabledThumbRadius: 10,
+          disabledThumbRadius: 10,
+          elevation: 3,
+        ),
+      ),
+      child: Slider(
+        value: (hasWords && totalCount > 1)
+            ? currentIndex.toDouble().clamp(0.0, (totalCount - 1).toDouble())
+            : 0.0,
+        min: 0.0,
+        max: (hasWords && totalCount > 1)
+            ? (totalCount - 1).toDouble()
+            : 1.0,
+        divisions: (hasWords && totalCount > 1) ? (totalCount - 1) : 1,
+        onChanged: (hasWords && totalCount > 1)
+            ? (val) {
+                studyNotifier.seekTo(val.round());
+              }
+            : null,
+      ),
+    );
+  }
+
+  Widget _buildControlButtons(
+    bool isDark,
+    bool hasWords,
+    bool hasPrev,
+    bool hasNext,
+    StudyState studyState,
+    StudyController studyNotifier,
+  ) {
+    return Row(
+      children: [
+        // [ ← Prev ]
+        Expanded(
+          child: _buildActionButton(
+            text: '← Prev',
+            backgroundColor:
+                isDark ? AppColors.darkSurface : const Color(0xFFF2F2F7),
+            textColor: isDark ? Colors.white : Colors.black,
+            isEnabled: hasPrev,
+            onTap: () {
+              HapticFeedback.lightImpact();
+              studyNotifier.prev();
+            },
+          ),
+        ),
+        const SizedBox(width: 10),
+
+        // [ Random ] (Vibrant Orange)
+        Expanded(
+          child: _buildActionButton(
+            text: 'Random',
+            backgroundColor: const Color(0xFFFF9500),
+            textColor: Colors.white,
+            isBold: true,
+            isEnabled: hasWords,
+            onTap: () {
+              HapticFeedback.mediumImpact();
+              studyNotifier.toggleRandom();
+            },
+          ),
+        ),
+        const SizedBox(width: 10),
+
+        // [ 🔊 ] (Vibrant Blue Speaker)
+        Expanded(
+          child: _buildActionButton(
+            icon: studyState.isPlayingTts
+                ? Icons.graphic_eq_rounded
+                : Icons.volume_up_rounded,
+            backgroundColor: const Color(0xFF007AFF),
+            textColor: Colors.white,
+            isEnabled: hasWords,
+            onTap: () {
+              HapticFeedback.lightImpact();
+              studyNotifier.speakCurrent();
+            },
+          ),
+        ),
+        const SizedBox(width: 10),
+
+        // [ Next → ]
+        Expanded(
+          child: _buildActionButton(
+            text: 'Next →',
+            backgroundColor:
+                isDark ? AppColors.darkSurface : const Color(0xFFF2F2F7),
+            textColor: isDark ? Colors.white : Colors.black,
+            isEnabled: hasNext,
+            onTap: () {
+              HapticFeedback.lightImpact();
+              studyNotifier.next();
+            },
+          ),
+        ),
+      ],
+    );
+  }
 
   Widget _buildWordCard({
     required String text,
