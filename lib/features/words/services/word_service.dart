@@ -263,8 +263,7 @@ class WordService {
       final q = query.toLowerCase().trim();
       return allWords.where((w) {
         final en = w.en.toLowerCase().trim();
-        final tr = w.tr.toLowerCase().trim();
-        return en.startsWith(q) || tr.startsWith(q);
+        return en.startsWith(q);
       }).toList();
     } on DioException catch (e) {
       log('WordService.searchWords DioException: ${e.response?.statusCode}');
@@ -272,8 +271,7 @@ class WordService {
       final q = query.toLowerCase().trim();
       return allWords.where((w) {
         final en = w.en.toLowerCase().trim();
-        final tr = w.tr.toLowerCase().trim();
-        return en.startsWith(q) || tr.startsWith(q);
+        return en.startsWith(q);
       }).toList();
     }
   }

@@ -2,8 +2,10 @@ import 'dart:io';
 import 'dart:math';
 import 'dart:typed_data';
 import 'package:audioplayers/audioplayers.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:path_provider/path_provider.dart';
 
 final soundServiceProvider = Provider<SoundService>((ref) {
   final service = SoundService();
@@ -30,6 +32,9 @@ class SoundService {
 
       // Configure iOS & Android AudioContext for instant, reliable sound effects
       if (_player != null) {
+        if (!kIsWeb) {
+          await _player.setPlayerMode(PlayerMode.lowLatency);
+        }
         await _player.setAudioContext(
           AudioContext(
             iOS: AudioContextIOS(
@@ -42,16 +47,22 @@ class SoundService {
             android: AudioContextAndroid(
               isSpeakerphoneOn: false,
               stayAwake: false,
-              contentType: AndroidContentType.sonification,
-              usageType: AndroidUsageType.assistanceSonification,
-              audioFocus: AndroidAudioFocus.gainTransientMayDuck,
+              contentType: AndroidContentType.music,
+              usageType: AndroidUsageType.media,
+              audioFocus: AndroidAudioFocus.none,
             ),
           ),
         );
       }
 
-      // Save to named .wav files in temporary directory so iOS AVPlayerItem correctly parses WAV format
-      final tempDir = Directory.systemTemp;
+      // Save to named .wav files in sandboxed temporary directory
+      Directory? tempDir;
+      try {
+        tempDir = await getTemporaryDirectory();
+      } catch (_) {
+        tempDir = Directory.systemTemp;
+      }
+
       final cFile = File('${tempDir.path}/wordstation_correct.wav');
       await cFile.writeAsBytes(_correctWav!, flush: true);
       _correctFilePath = cFile.path;
@@ -70,9 +81,9 @@ class SoundService {
       if (_player != null) {
         await _player.stop();
         if (_correctFilePath != null && File(_correctFilePath!).existsSync()) {
-          await _player.play(DeviceFileSource(_correctFilePath!, mimeType: 'audio/wav'));
+          await _player.play(DeviceFileSource(_correctFilePath!, mimeType: 'audio/wav'), volume: 1.0);
         } else if (_correctWav != null) {
-          await _player.play(BytesSource(_correctWav!, mimeType: 'audio/wav'));
+          await _player.play(BytesSource(_correctWav!, mimeType: 'audio/wav'), volume: 1.0);
         }
       }
     } catch (_) {
@@ -86,9 +97,9 @@ class SoundService {
       if (_player != null) {
         await _player.stop();
         if (_wrongFilePath != null && File(_wrongFilePath!).existsSync()) {
-          await _player.play(DeviceFileSource(_wrongFilePath!, mimeType: 'audio/wav'));
+          await _player.play(DeviceFileSource(_wrongFilePath!, mimeType: 'audio/wav'), volume: 1.0);
         } else if (_wrongWav != null) {
-          await _player.play(BytesSource(_wrongWav!, mimeType: 'audio/wav'));
+          await _player.play(BytesSource(_wrongWav!, mimeType: 'audio/wav'), volume: 1.0);
         }
       }
     } catch (_) {

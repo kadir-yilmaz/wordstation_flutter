@@ -186,18 +186,13 @@ class StudyController extends StateNotifier<StudyState> {
 
     final filtered = _allWords.where((w) {
       final en = w.en.toLowerCase().trim();
-      final tr = w.tr.toLowerCase().trim();
-      return en.startsWith(q) || tr.startsWith(q);
+      return en.startsWith(q);
     }).toList();
 
-    // Strict alphabetical sorting by prefix (e.g. b -> ba -> be -> bi...)
+    // Strict alphabetical sorting by English word
     filtered.sort((a, b) {
       final aEn = a.en.toLowerCase().trim();
       final bEn = b.en.toLowerCase().trim();
-      final aStarts = aEn.startsWith(q);
-      final bStarts = bEn.startsWith(q);
-      if (aStarts && !bStarts) return -1;
-      if (!aStarts && bStarts) return 1;
       return aEn.compareTo(bEn);
     });
 

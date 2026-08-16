@@ -66,3 +66,8 @@ app.*.map.json
 
 # Widget Preview related
 .widget_preview/
+
+# Local Notes
+notes/
+scripts/
+deploy.sh
