@@ -2,13 +2,12 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:flutter_tts/flutter_tts.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/widgets/responsive_layout.dart';
+import '../../../core/widgets/word_detail_bottom_sheet.dart';
 import '../controllers/study_controller.dart';
 import '../controllers/word_list_controller.dart';
 import '../models/word_model.dart';
-import '../services/word_service.dart';
 import 'add_edit_word_page.dart';
 
 class StudySessionPage extends ConsumerStatefulWidget {
@@ -34,15 +33,10 @@ class _StudySessionPageState extends ConsumerState<StudySessionPage>
   late Animation<double> _flipAnimation;
   final TextEditingController _searchController = TextEditingController();
   final ScrollController _exampleScrollController = ScrollController();
-  final FlutterTts _sheetTts = FlutterTts();
 
   @override
   void initState() {
     super.initState();
-
-    _sheetTts.setLanguage('en-US');
-    _sheetTts.setSpeechRate(0.48);
-    _sheetTts.awaitSpeakCompletion(true);
 
     _flipAnimationController = AnimationController(
       vsync: this,
@@ -69,7 +63,6 @@ class _StudySessionPageState extends ConsumerState<StudySessionPage>
     _flipAnimationController.dispose();
     _searchController.dispose();
     _exampleScrollController.dispose();
-    _sheetTts.stop();
     super.dispose();
   }
 
@@ -81,123 +74,7 @@ class _StudySessionPageState extends ConsumerState<StudySessionPage>
     }
   }
 
-  // Show Synonym Detail Modal Pop-up (Swift SynonymWordDetailSheet replica)
-  void _showSynonymDetailSheet(BuildContext context, WordModel word) {
-    HapticFeedback.mediumImpact();
-    final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: isDark ? AppColors.darkSurface : Colors.white,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      builder: (ctx) {
-        return SafeArea(
-          top: false,
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(28, 12, 28, 36),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                // 1. Grabber handle
-                Container(
-                  width: 38,
-                  height: 5,
-                  decoration: BoxDecoration(
-                    color: isDark
-                        ? const Color(0xFF48484A)
-                        : const Color(0xFFD1D1D6),
-                    borderRadius: BorderRadius.circular(3),
-                  ),
-                ),
-                const SizedBox(height: 24),
-
-                // 2. English word + Speaker Button
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Flexible(
-                      child: Text(
-                        word.en,
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          fontSize: 30,
-                          fontWeight: FontWeight.w800,
-                          color: isDark
-                              ? AppColors.darkTextPrimary
-                              : AppColors.lightTextPrimary,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    IconButton(
-                      icon: const Icon(
-                        Icons.volume_up_rounded,
-                        size: 28,
-                        color: Color(0xFF007AFF), // iOS Blue
-                      ),
-                      onPressed: () {
-                        HapticFeedback.lightImpact();
-                        _sheetTts.stop();
-                        _sheetTts.speak(word.en);
-                      },
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 6),
-
-                // 3. Turkish meaning
-                Text(
-                  word.tr,
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.w500,
-                    color: Color(0xFF8E8E93),
-                  ),
-                ),
-                const SizedBox(height: 20),
-
-                // 4. Divider
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 20),
-                  child: Divider(
-                    color: isDark
-                        ? AppColors.darkBorder
-                        : const Color(0xFFE5E5EA),
-                    height: 1,
-                  ),
-                ),
-                const SizedBox(height: 20),
-
-                // 5. Example sentence with SelectableText
-                SelectableText(
-                  (word.example != null && word.example!.trim().isNotEmpty)
-                      ? word.example!
-                      : 'No example sentence available.',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontSize: 15.0,
-                    fontStyle: FontStyle.italic,
-                    height: 1.45,
-                    color: (word.example != null &&
-                            word.example!.trim().isNotEmpty)
-                        ? (isDark
-                            ? AppColors.darkTextPrimary
-                            : AppColors.lightTextPrimary)
-                        : const Color(0xFF8E8E93),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        );
-      },
-    );
-  }
 
   Future<void> _handleDeleteCurrentWord(WordModel word) async {
     final confirmed = await showDialog<bool>(
@@ -228,24 +105,26 @@ class _StudySessionPageState extends ConsumerState<StudySessionPage>
 
     if (confirmed == true && mounted) {
       final studyNotifier = ref.read(studyControllerProvider.notifier);
-      final wordService = ref.read(wordServiceProvider);
 
       if (word.id != null) {
-        await wordService.deleteWord(word.id);
-        ref.read(wordListControllerProvider.notifier).refresh();
+        await ref.read(wordListControllerProvider.notifier).deleteWord(word.id);
       }
 
-      final currentWords =
-          List<WordModel>.from(ref.read(studyControllerProvider).words);
-      currentWords.removeWhere((w) => w.id == word.id || w.en == word.en);
+      if (!mounted) return;
 
-      if (currentWords.isEmpty) {
-        if (mounted) Navigator.of(context).pop();
+      final allWords = ref.read(wordListControllerProvider).words;
+      final freshListWords = (widget.listTitle != null &&
+              widget.listTitle != 'All' &&
+              widget.listTitle != 'Tümü')
+          ? allWords.where((w) => w.listName == widget.listTitle).toList()
+          : allWords;
+
+      if (freshListWords.isEmpty) {
+        Navigator.of(context).pop();
       } else {
         final currentIndex = ref.read(studyControllerProvider).currentIndex;
-        final newIndex =
-            currentIndex >= currentWords.length ? currentWords.length - 1 : currentIndex;
-        studyNotifier.initWithWords(currentWords, initialIndex: newIndex);
+        final newIndex = currentIndex.clamp(0, freshListWords.length - 1);
+        studyNotifier.initWithWords(freshListWords, initialIndex: newIndex);
       }
     }
   }
@@ -268,27 +147,43 @@ class _StudySessionPageState extends ConsumerState<StudySessionPage>
       }
     });
 
-    if (studyState.words.isEmpty) {
+    if (widget.words.isEmpty) {
       return Scaffold(
+        resizeToAvoidBottomInset: false,
         backgroundColor:
             isDark ? AppColors.darkBackground : AppColors.lightBackground,
         appBar: AppBar(
-          leading: IconButton(
-            icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 20),
+          leadingWidth: 90,
+          leading: TextButton.icon(
+            style: TextButton.styleFrom(
+              padding: const EdgeInsets.only(left: 8),
+              foregroundColor: const Color(0xFF34C759),
+            ),
+            icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 18),
+            label: const Text(
+              'Back',
+              style: TextStyle(fontSize: 17, fontWeight: FontWeight.w500),
+            ),
             onPressed: () => Navigator.of(context).pop(),
           ),
-          title: Text(widget.listTitle ?? 'Study Session'),
+          title: Text(
+            widget.listTitle ?? 'Study Session',
+            style: const TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          centerTitle: true,
         ),
-        body: Center(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 40),
+        body: SafeArea(
+          child: Center(
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                const Icon(
+                Icon(
                   Icons.menu_book_rounded,
                   size: 64,
-                  color: AppColors.turquoise,
+                  color: isDark ? AppColors.darkTextMuted : AppColors.lightTextMuted,
                 ),
                 const SizedBox(height: 16),
                 Text(
@@ -312,35 +207,6 @@ class _StudySessionPageState extends ConsumerState<StudySessionPage>
                         : AppColors.lightTextSecondary,
                   ),
                 ),
-                const SizedBox(height: 24),
-                ElevatedButton.icon(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.turquoise,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 24, vertical: 14),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(14),
-                    ),
-                  ),
-                  icon: const Icon(Icons.add_rounded),
-                  label: const Text(
-                    'Yeni Kelime Ekle',
-                    style: TextStyle(fontWeight: FontWeight.w700),
-                  ),
-                  onPressed: () async {
-                    final created = await Navigator.of(context).push<WordModel>(
-                      MaterialPageRoute(
-                        builder: (_) => AddEditWordPage(
-                          initialListName: widget.listTitle,
-                        ),
-                      ),
-                    );
-                    if (created != null && mounted) {
-                      studyNotifier.initWithWords([created]);
-                    }
-                  },
-                ),
               ],
             ),
           ),
@@ -348,13 +214,72 @@ class _StudySessionPageState extends ConsumerState<StudySessionPage>
       );
     }
 
-    final currentWord = studyState.currentWord!;
-    final currentIndex = studyState.currentIndex;
+    final hasWords = studyState.words.isNotEmpty;
+    final currentWord = hasWords ? studyState.currentWord : null;
+    final currentIndex = hasWords ? studyState.currentIndex : 0;
     final totalCount = studyState.totalCount;
+    final hasPrev = hasWords && (studyState.isRandom || currentIndex > 0);
+    final hasNext = hasWords && (studyState.isRandom || currentIndex < totalCount - 1);
 
-    return Scaffold(
-      backgroundColor:
-          isDark ? AppColors.darkBackground : AppColors.lightBackground,
+    return Focus(
+      autofocus: true,
+      onKeyEvent: (node, event) {
+        if (event is KeyDownEvent) {
+          final isEditingText =
+              FocusManager.instance.primaryFocus?.context?.widget is EditableText;
+          if (isEditingText) {
+            return KeyEventResult.ignored;
+          }
+
+          // Sağ Yön Tuşu: Sonraki Kelime
+          if (event.logicalKey == LogicalKeyboardKey.arrowRight) {
+            if (hasNext) {
+              HapticFeedback.lightImpact();
+              studyNotifier.next();
+              return KeyEventResult.handled;
+            }
+          }
+          // Sol Yön Tuşu: Önceki Kelime
+          else if (event.logicalKey == LogicalKeyboardKey.arrowLeft) {
+            if (hasPrev) {
+              HapticFeedback.lightImpact();
+              studyNotifier.prev();
+              return KeyEventResult.handled;
+            }
+          }
+          // Yukarı Yön Tuşu veya Space: Kartı Döndür
+          else if (event.logicalKey == LogicalKeyboardKey.arrowUp ||
+              event.logicalKey == LogicalKeyboardKey.space) {
+            if (hasWords) {
+              HapticFeedback.selectionClick();
+              studyNotifier.flip();
+              return KeyEventResult.handled;
+            }
+          }
+          // Aşağı Yön Tuşu: Rastgele (Random) Modunu Aç/Kapat
+          else if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
+            if (hasWords) {
+              HapticFeedback.mediumImpact();
+              studyNotifier.toggleRandom();
+              return KeyEventResult.handled;
+            }
+          }
+          // Nokta (.) Tuşu: Sesi Oynat (TTS)
+          else if (event.logicalKey == LogicalKeyboardKey.period ||
+              event.logicalKey == LogicalKeyboardKey.numpadDecimal) {
+            if (hasWords) {
+              HapticFeedback.lightImpact();
+              studyNotifier.speakCurrent();
+              return KeyEventResult.handled;
+            }
+          }
+        }
+        return KeyEventResult.ignored;
+      },
+      child: Scaffold(
+        resizeToAvoidBottomInset: false,
+        backgroundColor:
+            isDark ? AppColors.darkBackground : AppColors.lightBackground,
       appBar: AppBar(
         leadingWidth: 90,
         leading: TextButton.icon(
@@ -386,18 +311,32 @@ class _StudySessionPageState extends ConsumerState<StudySessionPage>
               if (_isNavigating) return;
               _isNavigating = true;
               try {
-                final newWord = await Navigator.of(context).push<WordModel>(
+                final nav = Navigator.of(context);
+                final newWord = await nav.push<WordModel>(
                   MaterialPageRoute(
                     builder: (_) => AddEditWordPage(
-                      initialListName: widget.listTitle ?? currentWord.listName,
+                      initialListName: widget.listTitle ?? currentWord?.listName,
                     ),
                   ),
                 );
-                if (newWord != null && mounted) {
-                  final currentWords = List<WordModel>.from(studyState.words);
-                  currentWords.add(newWord);
-                  studyNotifier.initWithWords(currentWords, initialIndex: currentWords.length - 1);
-                  ref.read(wordListControllerProvider.notifier).refresh();
+                if (!mounted) return;
+                if (newWord != null) {
+                  final allWords = ref.read(wordListControllerProvider).words;
+                  final freshListWords = (widget.listTitle != null &&
+                          widget.listTitle != 'All' &&
+                          widget.listTitle != 'Tümü')
+                      ? allWords.where((w) => w.listName == widget.listTitle).toList()
+                      : allWords;
+
+                  final targetIdx = freshListWords.indexWhere((w) =>
+                      w.id == newWord.id ||
+                      (w.en == newWord.en && w.tr == newWord.tr));
+                  final newIndex = targetIdx >= 0 ? targetIdx : (freshListWords.length - 1);
+                  studyNotifier.initWithWords(
+                    freshListWords,
+                    initialIndex: newIndex.clamp(
+                        0, freshListWords.isNotEmpty ? freshListWords.length - 1 : 0),
+                  );
                 }
               } finally {
                 if (mounted) _isNavigating = false;
@@ -409,72 +348,113 @@ class _StudySessionPageState extends ConsumerState<StudySessionPage>
           IconButton(
             icon: const Icon(Icons.edit_outlined, size: 22, color: Color(0xFF34C759)),
             tooltip: 'Edit',
-            onPressed: () async {
-              if (_isNavigating) return;
-              _isNavigating = true;
-              try {
-                final updated = await Navigator.of(context).push<WordModel>(
-                  MaterialPageRoute(
-                    builder: (_) => AddEditWordPage(wordToEdit: currentWord),
-                  ),
-                );
-                if (updated != null && mounted) {
-                  final updatedWords = List<WordModel>.from(studyState.words);
-                  updatedWords[currentIndex] = updated;
-                  studyNotifier.initWithWords(updatedWords, initialIndex: currentIndex);
-                }
-              } finally {
-                if (mounted) _isNavigating = false;
-              }
-            },
+            onPressed: hasWords && currentWord != null
+                ? () async {
+                    if (_isNavigating) return;
+                    _isNavigating = true;
+                    try {
+                      final nav = Navigator.of(context);
+                      final updated = await nav.push<WordModel>(
+                        MaterialPageRoute(
+                          builder: (_) => AddEditWordPage(wordToEdit: currentWord),
+                        ),
+                      );
+                      if (!mounted) return;
+                      if (updated != null) {
+                        final allWords = ref.read(wordListControllerProvider).words;
+                        final freshListWords = (widget.listTitle != null &&
+                                widget.listTitle != 'All' &&
+                                widget.listTitle != 'Tümü')
+                            ? allWords.where((w) => w.listName == widget.listTitle).toList()
+                            : allWords;
+
+                        if (freshListWords.isEmpty) {
+                          nav.pop();
+                        } else {
+                          final targetIdx = freshListWords.indexWhere((w) =>
+                              w.id == updated.id ||
+                              (w.en == updated.en && w.tr == updated.tr));
+                          final nextIndex = targetIdx >= 0
+                              ? targetIdx
+                              : currentIndex.clamp(0, freshListWords.length - 1);
+                          studyNotifier.initWithWords(freshListWords, initialIndex: nextIndex);
+                        }
+                      }
+                    } finally {
+                      if (mounted) _isNavigating = false;
+                    }
+                  }
+                : null,
           ),
 
           // Delete Button (Green)
           IconButton(
             icon: const Icon(Icons.delete_outline_rounded, size: 22, color: Color(0xFF34C759)),
             tooltip: 'Delete',
-            onPressed: () => _handleDeleteCurrentWord(currentWord),
+            onPressed: hasWords && currentWord != null
+                ? () => _handleDeleteCurrentWord(currentWord)
+                : null,
           ),
           const SizedBox(width: 4),
         ],
       ),
-      body: SafeArea(
-        child: ResponsiveContent(
-          maxWidth: 680,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 20),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-              // 1. Search Bar (Swift replica)
-              Container(
-                height: 42,
-                margin: const EdgeInsets.only(top: 6, bottom: 8),
-                decoration: BoxDecoration(
-                  color: isDark ? AppColors.darkSurface : const Color(0xFFE9E9EB),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: TextField(
-                  controller: _searchController,
-                  onChanged: (val) {
-                    studyNotifier.onSearchChanged(val);
-                  },
-                  decoration: InputDecoration(
-                    hintText: 'Search for a word...',
-                    hintStyle: TextStyle(
-                      fontSize: 15,
-                      color: isDark ? AppColors.darkTextMuted : const Color(0xFF8E8E93),
+      body: GestureDetector(
+        behavior: HitTestBehavior.translucent,
+        onTap: () => FocusScope.of(context).unfocus(),
+        child: SafeArea(
+          child: ResponsiveContent(
+            maxWidth: 680,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                // 1. Search Bar (Swift replica)
+                Container(
+                  height: 42,
+                  margin: const EdgeInsets.only(top: 6, bottom: 8),
+                  decoration: BoxDecoration(
+                    color: isDark ? AppColors.darkSurface : const Color(0xFFE9E9EB),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: TextField(
+                    controller: _searchController,
+                    onTapOutside: (event) {
+                      FocusScope.of(context).unfocus();
+                    },
+                    onChanged: (val) {
+                      studyNotifier.onSearchChanged(val);
+                      setState(() {});
+                    },
+                    decoration: InputDecoration(
+                      hintText: 'Search for a word...',
+                      hintStyle: TextStyle(
+                        fontSize: 15,
+                        color: isDark ? AppColors.darkTextMuted : const Color(0xFF8E8E93),
+                      ),
+                      prefixIcon: Icon(
+                        Icons.search_rounded,
+                        size: 20,
+                        color: isDark ? AppColors.darkTextMuted : const Color(0xFF8E8E93),
+                      ),
+                      suffixIcon: _searchController.text.isNotEmpty
+                          ? IconButton(
+                              icon: const Icon(Icons.clear_rounded, size: 18),
+                              padding: EdgeInsets.zero,
+                              constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+                              color: isDark ? AppColors.darkTextMuted : const Color(0xFF8E8E93),
+                              onPressed: () {
+                                _searchController.clear();
+                                studyNotifier.onSearchChanged('');
+                                setState(() {});
+                              },
+                            )
+                          : null,
+                      border: InputBorder.none,
+                      contentPadding: const EdgeInsets.symmetric(vertical: 10),
                     ),
-                    prefixIcon: Icon(
-                      Icons.search_rounded,
-                      size: 20,
-                      color: isDark ? AppColors.darkTextMuted : const Color(0xFF8E8E93),
-                    ),
-                    border: InputBorder.none,
-                    contentPadding: const EdgeInsets.symmetric(vertical: 10),
                   ),
                 ),
-              ),
 
               // 2. Synonym Badges (Height matching search bar: 42)
               SizedBox(
@@ -511,7 +491,7 @@ class _StudySessionPageState extends ConsumerState<StudySessionPage>
                               child: InkWell(
                                 borderRadius: BorderRadius.circular(12),
                                 onTap: () {
-                                  _showSynonymDetailSheet(context, badge.word);
+                                  showWordDetailModal(context, word: badge.word);
                                 },
                                 child: Padding(
                                   padding: const EdgeInsets.symmetric(
@@ -532,40 +512,26 @@ class _StudySessionPageState extends ConsumerState<StudySessionPage>
                           );
                         },
                       )
-                    : Align(
-                        alignment: Alignment.centerLeft,
-                        child: Container(
-                          height: 42,
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 14, vertical: 10),
-                          decoration: BoxDecoration(
-                            color: isDark
-                                ? const Color(0xFF2C2C2E)
-                                : const Color(0xFFE5E5EA),
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(
-                                Icons.auto_awesome_outlined,
-                                size: 16,
-                                color: isDark
-                                    ? AppColors.darkTextMuted
-                                    : AppColors.lightTextMuted,
-                              ),
-                              const SizedBox(width: 8),
-                              Text(
-                                'No synonyms available for this word.',
-                                style: TextStyle(
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w500,
-                                  color: isDark
-                                      ? AppColors.darkTextMuted
-                                      : AppColors.lightTextMuted,
-                                ),
-                              ),
-                            ],
+                    : Container(
+                        height: 42,
+                        width: double.infinity,
+                        decoration: BoxDecoration(
+                          color: isDark
+                              ? const Color(0xFF2C2C2E)
+                              : const Color(0xFFE9E9EB),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Center(
+                          child: Text(
+                            'No synonyms available for this word.',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              fontSize: 13.5,
+                              fontWeight: FontWeight.w500,
+                              color: isDark
+                                  ? AppColors.darkTextMuted
+                                  : const Color(0xFF8E8E93),
+                            ),
                           ),
                         ),
                       ),
@@ -598,12 +564,15 @@ class _StudySessionPageState extends ConsumerState<StudySessionPage>
                       child: Padding(
                         padding: const EdgeInsets.only(right: 6),
                         child: SelectableText(
-                          (currentWord.example != null &&
-                                  currentWord.example!.trim().isNotEmpty)
-                              ? currentWord.example!
-                              : 'No example sentence available.',
-                          textAlign: (currentWord.example != null &&
-                                  currentWord.example!.trim().isNotEmpty)
+                          hasWords
+                              ? ((currentWord?.example != null &&
+                                      currentWord!.example!.trim().isNotEmpty)
+                                  ? currentWord.example!
+                                  : 'No example sentence available.')
+                              : 'Aradığınız kelime bulunamadı.',
+                          textAlign: hasWords &&
+                                  (currentWord?.example != null &&
+                                      currentWord!.example!.trim().isNotEmpty)
                               ? TextAlign.start
                               : TextAlign.center,
                           style: TextStyle(
@@ -611,8 +580,9 @@ class _StudySessionPageState extends ConsumerState<StudySessionPage>
                             fontStyle: FontStyle.italic,
                             fontWeight: FontWeight.w400,
                             height: 1.45,
-                            color: (currentWord.example != null &&
-                                    currentWord.example!.trim().isNotEmpty)
+                            color: hasWords &&
+                                    (currentWord?.example != null &&
+                                        currentWord!.example!.trim().isNotEmpty)
                                 ? (isDark
                                     ? AppColors.darkTextPrimary
                                     : Colors.black87)
@@ -633,15 +603,21 @@ class _StudySessionPageState extends ConsumerState<StudySessionPage>
               Expanded(
                 flex: 5,
                 child: GestureDetector(
-                  onTap: () {
-                    HapticFeedback.selectionClick();
-                    studyNotifier.flip();
-                  },
+                  onTap: hasWords
+                      ? () {
+                          HapticFeedback.selectionClick();
+                          studyNotifier.flip();
+                        }
+                      : null,
                   child: AnimatedBuilder(
                     animation: _flipAnimation,
                     builder: (context, child) {
                       final angle = _flipAnimation.value * pi;
                       final isBackVisible = angle >= (pi / 2);
+
+                      final cardText = hasWords
+                          ? (isBackVisible ? currentWord!.tr : currentWord!.en)
+                          : (isBackVisible ? 'Sonuç Bulunamadı' : 'No Results');
 
                       return Transform(
                         transform: Matrix4.identity()
@@ -653,12 +629,12 @@ class _StudySessionPageState extends ConsumerState<StudySessionPage>
                                 transform: Matrix4.identity()..rotateY(pi),
                                 alignment: Alignment.center,
                                 child: _buildWordCard(
-                                  text: currentWord.tr,
+                                  text: cardText,
                                   isPink: true,
                                 ),
                               )
                             : _buildWordCard(
-                                text: currentWord.en,
+                                text: cardText,
                                 isPink: false,
                               ),
                       );
@@ -672,7 +648,7 @@ class _StudySessionPageState extends ConsumerState<StudySessionPage>
               // 5. Index Label (Centered right below word card)
               Center(
                 child: Text(
-                  '${currentIndex + 1}/$totalCount',
+                  hasWords ? '${currentIndex + 1}/$totalCount' : '0/0',
                   style: TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.w700,
@@ -685,32 +661,47 @@ class _StudySessionPageState extends ConsumerState<StudySessionPage>
 
               const SizedBox(height: 6),
 
-              // 6. Progress Slider
-              if (totalCount > 1)
-                SliderTheme(
-                  data: SliderTheme.of(context).copyWith(
-                    activeTrackColor: const Color(0xFFE5E5EA),
-                    inactiveTrackColor: isDark
-                        ? AppColors.darkBorder
-                        : const Color(0xFFE5E5EA),
-                    thumbColor: Colors.white,
-                    overlayColor: Colors.transparent,
-                    trackHeight: 4,
-                    thumbShape: const RoundSliderThumbShape(
-                      enabledThumbRadius: 10,
-                      elevation: 3,
-                    ),
-                  ),
-                  child: Slider(
-                    value: currentIndex.toDouble(),
-                    min: 0,
-                    max: (totalCount - 1).toDouble(),
-                    divisions: totalCount > 1 ? totalCount - 1 : 1,
-                    onChanged: (val) {
-                      studyNotifier.seekTo(val.round());
-                    },
+              // 6. Progress Slider (Always visible to maintain layout stability, disabled when totalCount <= 1)
+              SliderTheme(
+                data: SliderTheme.of(context).copyWith(
+                  activeTrackColor: const Color(0xFFE5E5EA),
+                  inactiveTrackColor: isDark
+                      ? AppColors.darkBorder
+                      : const Color(0xFFE5E5EA),
+                  disabledActiveTrackColor: isDark
+                      ? AppColors.darkBorder
+                      : const Color(0xFFE5E5EA),
+                  disabledInactiveTrackColor: isDark
+                      ? AppColors.darkBorder
+                      : const Color(0xFFE5E5EA),
+                  thumbColor: Colors.white,
+                  disabledThumbColor: Colors.white.withValues(alpha: 0.6),
+                  overlayColor: Colors.transparent,
+                  trackHeight: 4,
+                  thumbShape: const RoundSliderThumbShape(
+                    enabledThumbRadius: 10,
+                    disabledThumbRadius: 10,
+                    elevation: 3,
                   ),
                 ),
+                child: Slider(
+                  value: (hasWords && totalCount > 1)
+                      ? currentIndex.toDouble().clamp(0.0, (totalCount - 1).toDouble())
+                      : 0.0,
+                  min: 0.0,
+                  max: (hasWords && totalCount > 1)
+                      ? (totalCount - 1).toDouble()
+                      : 1.0,
+                  divisions: (hasWords && totalCount > 1)
+                      ? (totalCount - 1)
+                      : 1,
+                  onChanged: (hasWords && totalCount > 1)
+                      ? (val) {
+                          studyNotifier.seekTo(val.round());
+                        }
+                      : null,
+                ),
+              ),
 
               const SizedBox(height: 8),
 
@@ -727,6 +718,7 @@ class _StudySessionPageState extends ConsumerState<StudySessionPage>
                             ? AppColors.darkSurface
                             : const Color(0xFFF2F2F7),
                         textColor: isDark ? Colors.white : Colors.black,
+                        isEnabled: hasPrev,
                         onTap: () {
                           HapticFeedback.lightImpact();
                           studyNotifier.prev();
@@ -742,6 +734,7 @@ class _StudySessionPageState extends ConsumerState<StudySessionPage>
                         backgroundColor: const Color(0xFFFF9500),
                         textColor: Colors.white,
                         isBold: true,
+                        isEnabled: hasWords,
                         onTap: () {
                           HapticFeedback.mediumImpact();
                           studyNotifier.toggleRandom();
@@ -758,6 +751,7 @@ class _StudySessionPageState extends ConsumerState<StudySessionPage>
                             : Icons.volume_up_rounded,
                         backgroundColor: const Color(0xFF007AFF),
                         textColor: Colors.white,
+                        isEnabled: hasWords,
                         onTap: () {
                           HapticFeedback.lightImpact();
                           studyNotifier.speakCurrent();
@@ -774,6 +768,7 @@ class _StudySessionPageState extends ConsumerState<StudySessionPage>
                             ? AppColors.darkSurface
                             : const Color(0xFFF2F2F7),
                         textColor: isDark ? Colors.white : Colors.black,
+                        isEnabled: hasNext,
                         onTap: () {
                           HapticFeedback.lightImpact();
                           studyNotifier.next();
@@ -788,7 +783,9 @@ class _StudySessionPageState extends ConsumerState<StudySessionPage>
         ),
       ),
     ),
-  );
+  ),
+),
+);
 }
 
   Widget _buildWordCard({
@@ -837,27 +834,32 @@ class _StudySessionPageState extends ConsumerState<StudySessionPage>
     required Color backgroundColor,
     required Color textColor,
     bool isBold = false,
+    bool isEnabled = true,
     required VoidCallback onTap,
   }) {
-    return SizedBox(
-      height: 52,
-      child: Material(
-        color: backgroundColor,
-        borderRadius: BorderRadius.circular(16),
-        child: InkWell(
+    return AnimatedOpacity(
+      duration: const Duration(milliseconds: 150),
+      opacity: isEnabled ? 1.0 : 0.35,
+      child: SizedBox(
+        height: 52,
+        child: Material(
+          color: backgroundColor,
           borderRadius: BorderRadius.circular(16),
-          onTap: onTap,
-          child: Center(
-            child: icon != null
-                ? Icon(icon, color: textColor, size: 24)
-                : Text(
-                    text ?? '',
-                    style: TextStyle(
-                      fontSize: 15,
-                      fontWeight: isBold ? FontWeight.w700 : FontWeight.w600,
-                      color: textColor,
+          child: InkWell(
+            borderRadius: BorderRadius.circular(16),
+            onTap: isEnabled ? onTap : null,
+            child: Center(
+              child: icon != null
+                  ? Icon(icon, color: textColor, size: 24)
+                  : Text(
+                      text ?? '',
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: isBold ? FontWeight.w700 : FontWeight.w600,
+                        color: textColor,
+                      ),
                     ),
-                  ),
+            ),
           ),
         ),
       ),

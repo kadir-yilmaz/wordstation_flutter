@@ -1,12 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/theme/app_colors.dart';
 import '../profile/pages/profile_page.dart';
 import '../quiz/pages/quiz_page.dart';
+import '../words/controllers/word_list_controller.dart';
 import '../words/pages/synonyms_page.dart';
 import '../words/pages/words_list_page.dart';
 
-class MainNavigationPage extends StatefulWidget {
+class MainNavigationPage extends ConsumerStatefulWidget {
   final int initialIndex;
 
   const MainNavigationPage({
@@ -15,10 +17,11 @@ class MainNavigationPage extends StatefulWidget {
   });
 
   @override
-  State<MainNavigationPage> createState() => _MainNavigationPageState();
+  ConsumerState<MainNavigationPage> createState() => _MainNavigationPageState();
 }
 
-class _MainNavigationPageState extends State<MainNavigationPage> {
+class _MainNavigationPageState extends ConsumerState<MainNavigationPage>
+    with WidgetsBindingObserver {
   late int _currentIndex;
   final GlobalKey<NavigatorState> _myListsNavKey = GlobalKey<NavigatorState>();
 
@@ -26,17 +29,38 @@ class _MainNavigationPageState extends State<MainNavigationPage> {
   void initState() {
     super.initState();
     _currentIndex = widget.initialIndex;
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      ref.read(wordListControllerProvider.notifier).refresh();
+      ref.invalidate(synonymGroupsFutureProvider);
+    }
   }
 
   void _onItemTapped(int index) {
     if (_currentIndex == index && index == 0) {
-      // If tapping My Lists again, pop to root of list
+      // If tapping My Lists again, pop to root of list and refresh
       _myListsNavKey.currentState?.popUntil((route) => route.isFirst);
+      ref.read(wordListControllerProvider.notifier).refresh();
     } else if (_currentIndex != index) {
       HapticFeedback.selectionClick();
       setState(() {
         _currentIndex = index;
       });
+      // Always fetch fresh data on tab switch
+      ref.read(wordListControllerProvider.notifier).refresh();
+      if (index == 1) {
+        ref.invalidate(synonymGroupsFutureProvider);
+      }
     }
   }
 

@@ -232,6 +232,7 @@ class _WordsListPageState extends ConsumerState<WordsListPage> {
         )
         .then((_) {
       if (mounted) {
+        ref.read(wordListControllerProvider.notifier).refresh();
         setState(() {
           _isNavigating = false;
         });

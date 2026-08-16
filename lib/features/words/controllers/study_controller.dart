@@ -1,4 +1,5 @@
 import 'dart:math';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_tts/flutter_tts.dart';
@@ -97,11 +98,24 @@ class StudyController extends StateNotifier<StudyState> {
 
   Future<void> _initTts() async {
     try {
+      if (defaultTargetPlatform == TargetPlatform.iOS) {
+        await _tts.setSharedInstance(true);
+        await _tts.setIosAudioCategory(
+          IosTextToSpeechAudioCategory.playback,
+          [
+            IosTextToSpeechAudioCategoryOptions.defaultToSpeaker,
+            IosTextToSpeechAudioCategoryOptions.allowBluetooth,
+            IosTextToSpeechAudioCategoryOptions.allowBluetoothA2DP,
+            IosTextToSpeechAudioCategoryOptions.mixWithOthers,
+          ],
+          IosTextToSpeechAudioMode.defaultMode,
+        );
+      }
       await _tts.setLanguage('en-US');
-      await _tts.setSpeechRate(0.48);
+      await _tts.setSpeechRate(0.5);
       await _tts.setVolume(1.0);
       await _tts.setPitch(1.0);
-      await _tts.awaitSpeakCompletion(true);
+      await _tts.awaitSpeakCompletion(false);
 
       _tts.setCompletionHandler(() {
         if (mounted) state = state.copyWith(isPlayingTts: false);
@@ -242,17 +256,22 @@ class StudyController extends StateNotifier<StudyState> {
 
   void next() {
     if (state.words.isEmpty) return;
+    if (state.isRandom) {
+      if (state.isPlayingTts) _tts.stop();
+      _goToRandom();
+      return;
+    }
+
+    if (state.currentIndex >= state.words.length - 1) {
+      return;
+    }
+
     HapticFeedback.selectionClick();
     if (state.isPlayingTts) {
       _tts.stop();
     }
 
-    if (state.isRandom) {
-      _goToRandom();
-      return;
-    }
-
-    final nextIndex = (state.currentIndex + 1) % state.words.length;
+    final nextIndex = state.currentIndex + 1;
     final badges = _findSynonymBadges(state.words, nextIndex);
     state = state.copyWith(
       currentIndex: nextIndex,
@@ -264,13 +283,22 @@ class StudyController extends StateNotifier<StudyState> {
 
   void prev() {
     if (state.words.isEmpty) return;
+    if (state.isRandom) {
+      if (state.isPlayingTts) _tts.stop();
+      _goToRandom();
+      return;
+    }
+
+    if (state.currentIndex <= 0) {
+      return;
+    }
+
     HapticFeedback.selectionClick();
     if (state.isPlayingTts) {
       _tts.stop();
     }
 
-    final prevIndex =
-        (state.currentIndex - 1 + state.words.length) % state.words.length;
+    final prevIndex = state.currentIndex - 1;
     final badges = _findSynonymBadges(state.words, prevIndex);
     state = state.copyWith(
       currentIndex: prevIndex,
@@ -339,11 +367,11 @@ class StudyController extends StateNotifier<StudyState> {
 
     try {
       HapticFeedback.lightImpact();
-      state = state.copyWith(isPlayingTts: true);
+      if (mounted) state = state.copyWith(isPlayingTts: true);
       await _tts.stop();
 
-      // Auto-reset timer safety net (max 2 seconds for a single word)
-      Future.delayed(const Duration(milliseconds: 1800), () {
+      // Auto-reset timer safety net (max 1.4 seconds for a single word)
+      Future.delayed(const Duration(milliseconds: 1400), () {
         if (mounted && state.isPlayingTts) {
           state = state.copyWith(isPlayingTts: false);
         }
@@ -351,10 +379,7 @@ class StudyController extends StateNotifier<StudyState> {
 
       await _tts.speak(current.en);
     } catch (_) {
-    } finally {
-      if (mounted) {
-        state = state.copyWith(isPlayingTts: false);
-      }
+      if (mounted) state = state.copyWith(isPlayingTts: false);
     }
   }
 

@@ -1,0 +1,73 @@
+name: Deploy Flutter Web to RunASP
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build-and-deploy:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Run tests
+        run: flutter test
+
+      - name: Build Flutter Web
+        run: flutter build web --release
+
+      - name: Ensure web.config is in build output
+        shell: pwsh
+        run: |
+          if (Test-Path "web/web.config") {
+            Copy-Item "web/web.config" -Destination "build/web/web.config" -Force
+          }
+
+      - name: Deploy to RunASP via WebDeploy
+        shell: pwsh
+        env:
+          DEPLOY_SECRETS: ${{ secrets.DEPLOY_SECRETS }}
+        run: |
+          if (-not $env:DEPLOY_SECRETS) {
+            Write-Error "HATA: 'DEPLOY_SECRETS' isimli GitHub Secret bulunamadi! Lutfen Repository Settings -> Secrets kismindan ekleyin."
+            exit 1
+          }
+
+          $secrets = $env:DEPLOY_SECRETS | ConvertFrom-Json
+          $server = $secrets.server
+          $port = if ($secrets.port) { $secrets.port } else { 8172 }
+          $site = $secrets.site_name
+          $username = $secrets.username
+          $password = $secrets.password
+
+          Write-Host "WebDeploy ile yayinlama basliyor: $server:$port ($site)..."
+
+          $msdeployPath = "C:\Program Files\IIS\Microsoft Web Deploy V3\msdeploy.exe"
+          if (-not (Test-Path $msdeployPath)) {
+            $msdeployPath = "C:\Program Files (x86)\IIS\Microsoft Web Deploy V3\msdeploy.exe"
+          }
+
+          if (-not (Test-Path $msdeployPath)) {
+            Write-Error "MSDeploy.exe bulunamadi!"
+            exit 1
+          }
+
+          $sourcePath = (Get-Item "build/web").FullName
+          $destUrl = "https://$($server):$($port)/msdeploy.axd?site=$($site)"
+
+          & $msdeployPath -verb:sync `
+            -source:contentPath="$sourcePath" `
+            -dest:contentPath="$site",computerName="$destUrl",userName="$username",password="$password",authType="Basic" `
+            -allowUntrusted
+
+          Write-Host "Basariyla yayinlandi! -> https://$($secrets.domain)"

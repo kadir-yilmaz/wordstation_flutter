@@ -239,19 +239,8 @@ class WordListController extends StateNotifier<WordListState> {
 
   Future<bool> addWord(WordModel word) async {
     try {
-      final created = await _wordService.addWord(word);
-      final updatedList = [created, ...state.words];
-      
-      // Update list names if new list name added
-      final currentLists = List<String>.from(state.listNames);
-      if (word.listName != null &&
-          word.listName!.isNotEmpty &&
-          !currentLists.contains(word.listName)) {
-        currentLists.add(word.listName!);
-      }
-
-      if (!mounted) return true;
-      state = state.copyWith(words: updatedList, listNames: currentLists);
+      await _wordService.addWord(word);
+      await loadInitialData();
       return true;
     } catch (e) {
       if (!mounted) return false;
@@ -264,13 +253,8 @@ class WordListController extends StateNotifier<WordListState> {
 
   Future<bool> updateWord(WordModel word) async {
     try {
-      final updated = await _wordService.updateWord(word);
-      final updatedList = state.words.map((w) {
-        return w.id == word.id ? updated : w;
-      }).toList();
-
-      if (!mounted) return true;
-      state = state.copyWith(words: updatedList);
+      await _wordService.updateWord(word);
+      await loadInitialData();
       return true;
     } catch (e) {
       if (!mounted) return false;
@@ -284,9 +268,7 @@ class WordListController extends StateNotifier<WordListState> {
   Future<bool> deleteWord(dynamic id) async {
     try {
       await _wordService.deleteWord(id);
-      final updatedList = state.words.where((w) => w.id != id).toList();
-      if (!mounted) return true;
-      state = state.copyWith(words: updatedList);
+      await loadInitialData();
       return true;
     } catch (e) {
       if (!mounted) return false;

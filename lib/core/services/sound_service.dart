@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'dart:math';
 import 'dart:typed_data';
 import 'package:audioplayers/audioplayers.dart';
@@ -14,35 +15,85 @@ class SoundService {
   final AudioPlayer? _player;
   Uint8List? _correctWav;
   Uint8List? _wrongWav;
+  String? _correctFilePath;
+  String? _wrongFilePath;
 
   SoundService({AudioPlayer? player, bool enableAudio = true})
       : _player = enableAudio ? (player ?? AudioPlayer()) : null {
     _initSounds();
   }
 
-  void _initSounds() {
-    _correctWav = _generateChimeWav();
-    _wrongWav = _generateBuzzerWav();
+  Future<void> _initSounds() async {
+    try {
+      _correctWav = _generateChimeWav();
+      _wrongWav = _generateBuzzerWav();
+
+      // Configure iOS & Android AudioContext for instant, reliable sound effects
+      if (_player != null) {
+        await _player.setAudioContext(
+          AudioContext(
+            iOS: AudioContextIOS(
+              category: AVAudioSessionCategory.playback,
+              options: {
+                AVAudioSessionOptions.mixWithOthers,
+                AVAudioSessionOptions.defaultToSpeaker,
+              },
+            ),
+            android: AudioContextAndroid(
+              isSpeakerphoneOn: false,
+              stayAwake: false,
+              contentType: AndroidContentType.sonification,
+              usageType: AndroidUsageType.assistanceSonification,
+              audioFocus: AndroidAudioFocus.gainTransientMayDuck,
+            ),
+          ),
+        );
+      }
+
+      // Save to named .wav files in temporary directory so iOS AVPlayerItem correctly parses WAV format
+      final tempDir = Directory.systemTemp;
+      final cFile = File('${tempDir.path}/wordstation_correct.wav');
+      await cFile.writeAsBytes(_correctWav!, flush: true);
+      _correctFilePath = cFile.path;
+
+      final wFile = File('${tempDir.path}/wordstation_wrong.wav');
+      await wFile.writeAsBytes(_wrongWav!, flush: true);
+      _wrongFilePath = wFile.path;
+    } catch (_) {
+      // Fallback handled during play
+    }
   }
 
   Future<void> playCorrectSound() async {
     try {
       HapticFeedback.lightImpact();
-      if (_correctWav != null && _player != null) {
+      if (_player != null) {
         await _player.stop();
-        await _player.play(BytesSource(_correctWav!));
+        if (_correctFilePath != null && File(_correctFilePath!).existsSync()) {
+          await _player.play(DeviceFileSource(_correctFilePath!, mimeType: 'audio/wav'));
+        } else if (_correctWav != null) {
+          await _player.play(BytesSource(_correctWav!, mimeType: 'audio/wav'));
+        }
       }
-    } catch (_) {}
+    } catch (_) {
+      SystemSound.play(SystemSoundType.click);
+    }
   }
 
   Future<void> playWrongSound() async {
     try {
       HapticFeedback.heavyImpact();
-      if (_wrongWav != null && _player != null) {
+      if (_player != null) {
         await _player.stop();
-        await _player.play(BytesSource(_wrongWav!));
+        if (_wrongFilePath != null && File(_wrongFilePath!).existsSync()) {
+          await _player.play(DeviceFileSource(_wrongFilePath!, mimeType: 'audio/wav'));
+        } else if (_wrongWav != null) {
+          await _player.play(BytesSource(_wrongWav!, mimeType: 'audio/wav'));
+        }
       }
-    } catch (_) {}
+    } catch (_) {
+      SystemSound.play(SystemSoundType.alert);
+    }
   }
 
   void dispose() {

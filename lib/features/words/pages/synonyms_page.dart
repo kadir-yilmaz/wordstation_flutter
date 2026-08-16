@@ -38,11 +38,25 @@ class _SynonymsPageState extends ConsumerState<SynonymsPage> {
     final wordListState = ref.watch(wordListControllerProvider);
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
+    final groupCountSubtitle = groupsAsync.maybeWhen(
+      data: (groups) {
+        final count = groups.where((g) {
+          if (_searchQuery.isEmpty) return true;
+          return g.turkishMeaning.toLowerCase().trim().startsWith(_searchQuery);
+        }).length;
+        return '$count eş anlamlı grup';
+      },
+      orElse: () => 'Eş anlamlı kelime grupları',
+    );
+
     return Scaffold(
-      body: SafeArea(
-        child: ResponsiveContent(
-          maxWidth: 800,
-          child: Column(
+      body: GestureDetector(
+        behavior: HitTestBehavior.translucent,
+        onTap: () => FocusScope.of(context).unfocus(),
+        child: SafeArea(
+          child: ResponsiveContent(
+            maxWidth: 800,
+            child: Column(
             children: [
             // Header
             Padding(
@@ -64,9 +78,10 @@ class _SynonymsPageState extends ConsumerState<SynonymsPage> {
                       ),
                       const SizedBox(height: 2),
                       Text(
-                        'Aynı Türkçe anlama sahip kelime grupları',
+                        groupCountSubtitle,
                         style: TextStyle(
                           fontSize: 13,
+                          fontWeight: FontWeight.w500,
                           color: isDark
                               ? AppColors.darkTextSecondary
                               : AppColors.lightTextSecondary,
@@ -78,7 +93,7 @@ class _SynonymsPageState extends ConsumerState<SynonymsPage> {
               ),
             ),
 
-            // Search Bar (Hem Türkçe hem İngilizce Arama)
+            // Search Bar (Sadece Türkçe Prefix Arama)
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
               child: Container(
@@ -93,6 +108,9 @@ class _SynonymsPageState extends ConsumerState<SynonymsPage> {
                 ),
                 child: TextField(
                   controller: _searchController,
+                  onTapOutside: (event) {
+                    FocusScope.of(context).unfocus();
+                  },
                   onChanged: (val) {
                     setState(() {
                       _searchQuery = val.trim().toLowerCase();
@@ -103,7 +121,7 @@ class _SynonymsPageState extends ConsumerState<SynonymsPage> {
                     color: isDark ? AppColors.darkTextPrimary : AppColors.lightTextPrimary,
                   ),
                   decoration: InputDecoration(
-                    hintText: 'Türkçe veya İngilizce eş anlamlı ara...',
+                    hintText: 'Türkçe eş anlamlı ara (örn: ça)...',
                     hintStyle: TextStyle(
                       fontSize: 13.5,
                       color: isDark ? AppColors.darkTextMuted : AppColors.lightTextMuted,
@@ -163,11 +181,10 @@ class _SynonymsPageState extends ConsumerState<SynonymsPage> {
                 data: (groups) {
                   final filteredGroups = groups.where((g) {
                     if (_searchQuery.isEmpty) return true;
-                    final trMatch = g.turkishMeaning.toLowerCase().contains(_searchQuery);
-                    final wordMatch = g.words.any((w) =>
-                        w.en.toLowerCase().contains(_searchQuery) ||
-                        w.tr.toLowerCase().contains(_searchQuery));
-                    return trMatch || wordMatch;
+                    return g.turkishMeaning
+                        .toLowerCase()
+                        .trim()
+                        .startsWith(_searchQuery);
                   }).toList();
 
                   if (filteredGroups.isEmpty) {
@@ -332,6 +349,7 @@ class _SynonymsPageState extends ConsumerState<SynonymsPage> {
         ),
       ),
     ),
-  );
+  ),
+);
 }
 }

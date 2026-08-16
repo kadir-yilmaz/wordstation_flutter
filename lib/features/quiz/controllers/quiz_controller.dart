@@ -4,6 +4,7 @@ import '../../../core/services/sound_service.dart';
 import '../../../core/storage/secure_storage_service.dart';
 import '../../words/controllers/word_list_controller.dart';
 import '../../words/models/word_model.dart';
+import '../models/daily_quiz_plan_model.dart';
 import '../models/quiz_history_model.dart';
 import '../models/quiz_question.dart';
 
@@ -19,6 +20,7 @@ class QuizState {
   final String quizTitle;
   final List<QuizQuestionResult> results;
   final List<QuizHistoryModel> historyList;
+  final DailyQuizPlanModel? dailyPlan;
   final bool isDailyQuizCompletedToday;
 
   const QuizState({
@@ -33,6 +35,7 @@ class QuizState {
     this.quizTitle = 'Genel Test',
     this.results = const [],
     this.historyList = const [],
+    this.dailyPlan,
     this.isDailyQuizCompletedToday = false,
   });
 
@@ -62,6 +65,8 @@ class QuizState {
     String? quizTitle,
     List<QuizQuestionResult>? results,
     List<QuizHistoryModel>? historyList,
+    DailyQuizPlanModel? dailyPlan,
+    bool clearDailyPlan = false,
     bool? isDailyQuizCompletedToday,
   }) {
     return QuizState(
@@ -76,6 +81,7 @@ class QuizState {
       quizTitle: quizTitle ?? this.quizTitle,
       results: results ?? this.results,
       historyList: historyList ?? this.historyList,
+      dailyPlan: clearDailyPlan ? null : (dailyPlan ?? this.dailyPlan),
       isDailyQuizCompletedToday:
           isDailyQuizCompletedToday ?? this.isDailyQuizCompletedToday,
     );
@@ -84,18 +90,26 @@ class QuizState {
 
 final quizControllerProvider =
     StateNotifierProvider<QuizController, QuizState>((ref) {
-  final wordListState = ref.watch(wordListControllerProvider);
   final soundService = ref.watch(soundServiceProvider);
   final storage = ref.watch(secureStorageServiceProvider);
-  return QuizController(
-    wordListState.words,
+  final initialWords = ref.read(wordListControllerProvider).words;
+
+  final controller = QuizController(
+    initialWords,
     soundService: soundService,
     storage: storage,
   );
+
+  // Update words pool gracefully without destroying the QuizController and its history state
+  ref.listen<WordListState>(wordListControllerProvider, (prev, next) {
+    controller.updateWordsPool(next.words);
+  });
+
+  return controller;
 });
 
 class QuizController extends StateNotifier<QuizState> {
-  final List<WordModel> _allWords;
+  List<WordModel> _allWords;
   final SoundService _soundService;
   final SecureStorageService _storage;
   final Random _random = Random();
@@ -110,16 +124,114 @@ class QuizController extends StateNotifier<QuizState> {
     loadInitialData();
   }
 
+  void updateWordsPool(List<WordModel> words) {
+    _allWords = List<WordModel>.from(words);
+  }
+
   Future<void> loadInitialData() async {
     final history = await _storage.getQuizHistoryList();
     final todayStr = _formatTodayDate();
-    final lastDailyDate = await _storage.getDailyQuizDate();
-    final isDailyDone = lastDailyDate == todayStr;
+    final dailyPlan = await _storage.getDailyQuizPlan();
+    final isDailyDone = dailyPlan?.isCompletedToday(todayStr) ?? false;
 
     if (!mounted) return;
     state = state.copyWith(
       historyList: history,
+      dailyPlan: dailyPlan,
       isDailyQuizCompletedToday: isDailyDone,
+    );
+  }
+
+  Future<bool> startOrResetDailyPlan({
+    required String listName,
+    required int dailyCount,
+    required bool englishToTurkish,
+  }) async {
+    final matchingWords = (listName == 'Tümü' || listName == 'All')
+        ? List<WordModel>.from(_allWords)
+        : _allWords.where((w) => w.listName == listName).toList();
+
+    if (matchingWords.isEmpty) {
+      return false;
+    }
+
+    final shuffled = List<WordModel>.from(matchingWords)..shuffle(_random);
+    final shuffledIds = shuffled.map((w) => w.id).toList();
+
+    final plan = DailyQuizPlanModel(
+      id: DateTime.now().millisecondsSinceEpoch.toString(),
+      listName: listName,
+      dailyCount: dailyCount,
+      shuffledWordIds: shuffledIds,
+      currentPointer: 0,
+      lastCompletedDate: null,
+      streakDays: 0,
+      isEnglishToTurkish: englishToTurkish,
+      createdAt: DateTime.now(),
+    );
+
+    await _storage.saveDailyQuizPlan(plan);
+    state = state.copyWith(dailyPlan: plan, isDailyQuizCompletedToday: false);
+    return true;
+  }
+
+  Future<void> deleteDailyPlan() async {
+    await _storage.deleteDailyQuizPlan();
+    state = state.copyWith(clearDailyPlan: true, isDailyQuizCompletedToday: false);
+  }
+
+  void startDailyQuizForToday() {
+    final plan = state.dailyPlan;
+    if (plan == null || plan.isPlanFinished) return;
+
+    final start = plan.currentPointer;
+    final end = min(start + plan.dailyCount, plan.totalWords);
+    if (start >= end) return;
+
+    final batchIds = plan.shuffledWordIds.sublist(start, end);
+    final selectedWords = <WordModel>[];
+    for (final id in batchIds) {
+      for (final w in _allWords) {
+        if (w.id == id) {
+          selectedWords.add(w);
+          break;
+        }
+      }
+    }
+
+    if (selectedWords.isEmpty) return;
+
+    final questions = _buildQuestionsFromWords(
+      selectedWords: selectedWords,
+      pool: _allWords,
+      englishToTurkish: plan.isEnglishToTurkish,
+    );
+
+    state = QuizState(
+      questions: questions,
+      currentIndex: 0,
+      score: 0,
+      isAnswered: false,
+      isQuizCompleted: false,
+      isEnglishToTurkish: plan.isEnglishToTurkish,
+      isDailyQuiz: true,
+      quizTitle: 'Günün Quizi (Gün ${plan.currentDay}/${plan.totalDays})',
+      results: [],
+      historyList: state.historyList,
+      dailyPlan: state.dailyPlan,
+      isDailyQuizCompletedToday: false,
+    );
+  }
+
+  void generateDailyQuiz({
+    int questionCount = 10,
+    bool englishToTurkish = true,
+  }) {
+    generateQuiz(
+      questionCount: questionCount,
+      englishToTurkish: englishToTurkish,
+      title: 'Günün Quizi',
+      isDailyQuiz: true,
     );
   }
 
@@ -160,42 +272,7 @@ class QuizController extends StateNotifier<QuizState> {
       quizTitle: title,
       results: [],
       historyList: state.historyList,
-      isDailyQuizCompletedToday: state.isDailyQuizCompletedToday,
-    );
-  }
-
-  void generateDailyQuiz({
-    int questionCount = 10,
-    bool englishToTurkish = true,
-  }) {
-    if (_allWords.length < 4) return;
-
-    // Seed with today's date for consistent daily words
-    final now = DateTime.now();
-    final seed = now.year * 10000 + now.month * 100 + now.day;
-    final dailyRandom = Random(seed);
-
-    final shuffled = List<WordModel>.from(_allWords)..shuffle(dailyRandom);
-    final count = min(questionCount, shuffled.length);
-    final selectedWords = shuffled.take(count).toList();
-
-    final questions = _buildQuestionsFromWords(
-      selectedWords: selectedWords,
-      pool: _allWords,
-      englishToTurkish: englishToTurkish,
-    );
-
-    state = QuizState(
-      questions: questions,
-      currentIndex: 0,
-      score: 0,
-      isAnswered: false,
-      isQuizCompleted: false,
-      isEnglishToTurkish: englishToTurkish,
-      isDailyQuiz: true,
-      quizTitle: 'Günün Quizi (${now.day}.${now.month}.${now.year})',
-      results: [],
-      historyList: state.historyList,
+      dailyPlan: state.dailyPlan,
       isDailyQuizCompletedToday: state.isDailyQuizCompletedToday,
     );
   }
@@ -309,14 +386,27 @@ class QuizController extends StateNotifier<QuizState> {
 
     await _storage.saveQuizHistory(historyEntry);
 
-    if (state.isDailyQuiz) {
-      await _storage.saveDailyQuizDate(_formatTodayDate());
+    DailyQuizPlanModel? updatedPlan = state.dailyPlan;
+    if (state.isDailyQuiz && state.dailyPlan != null) {
+      final plan = state.dailyPlan!;
+      final newPointer = min(plan.currentPointer + state.totalQuestions, plan.totalWords);
+      final todayStr = _formatTodayDate();
+
+      updatedPlan = plan.copyWith(
+        currentPointer: newPointer,
+        lastCompletedDate: todayStr,
+        streakDays: plan.streakDays + 1,
+      );
+
+      await _storage.saveDailyQuizPlan(updatedPlan);
+      await _storage.saveDailyQuizDate(todayStr);
     }
 
     final updatedHistory = await _storage.getQuizHistoryList();
     if (!mounted) return;
     state = state.copyWith(
       historyList: updatedHistory,
+      dailyPlan: updatedPlan,
       isDailyQuizCompletedToday: state.isDailyQuiz ? true : state.isDailyQuizCompletedToday,
     );
   }
@@ -349,6 +439,18 @@ class QuizController extends StateNotifier<QuizState> {
   Future<void> clearAllHistory() async {
     await _storage.clearQuizHistory();
     state = state.copyWith(historyList: []);
+  }
+
+  Future<void> clearGeneralHistory() async {
+    final remaining = state.historyList.where((h) => h.isDailyQuiz).toList();
+    await _storage.saveQuizHistoryList(remaining);
+    state = state.copyWith(historyList: remaining);
+  }
+
+  Future<void> clearDailyHistory() async {
+    final remaining = state.historyList.where((h) => !h.isDailyQuiz).toList();
+    await _storage.saveQuizHistoryList(remaining);
+    state = state.copyWith(historyList: remaining);
   }
 
   String _formatTodayDate() {

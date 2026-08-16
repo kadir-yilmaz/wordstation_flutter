@@ -1,8 +1,8 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import '../theme/app_colors.dart';
-import '../../features/words/controllers/study_controller.dart';
 import '../../features/words/models/word_model.dart';
 
 void showWordDetailModal(
@@ -10,25 +10,28 @@ void showWordDetailModal(
   required WordModel word,
   List<WordModel> allWords = const [],
 }) {
+  HapticFeedback.mediumImpact();
+  final isDark = Theme.of(context).brightness == Brightness.dark;
+
   showModalBottomSheet(
     context: context,
     isScrollControlled: true,
     backgroundColor: Colors.transparent,
     builder: (ctx) => WordDetailBottomSheet(
       word: word,
-      allWords: allWords,
+      isDark: isDark,
     ),
   );
 }
 
 class WordDetailBottomSheet extends StatefulWidget {
   final WordModel word;
-  final List<WordModel> allWords;
+  final bool isDark;
 
   const WordDetailBottomSheet({
     super.key,
     required this.word,
-    this.allWords = const [],
+    required this.isDark,
   });
 
   @override
@@ -36,23 +39,37 @@ class WordDetailBottomSheet extends StatefulWidget {
 }
 
 class _WordDetailBottomSheetState extends State<WordDetailBottomSheet> {
-  late WordModel _currentWord;
   final FlutterTts _tts = FlutterTts();
+  final ScrollController _scrollController = ScrollController();
   bool _isPlayingTts = false;
 
   @override
   void initState() {
     super.initState();
-    _currentWord = widget.word;
     _initTts();
   }
 
   void _initTts() async {
     try {
+      if (defaultTargetPlatform == TargetPlatform.iOS) {
+        await _tts.setSharedInstance(true);
+        await _tts.setIosAudioCategory(
+          IosTextToSpeechAudioCategory.playback,
+          [
+            IosTextToSpeechAudioCategoryOptions.defaultToSpeaker,
+            IosTextToSpeechAudioCategoryOptions.allowBluetooth,
+            IosTextToSpeechAudioCategoryOptions.allowBluetoothA2DP,
+            IosTextToSpeechAudioCategoryOptions.mixWithOthers,
+          ],
+          IosTextToSpeechAudioMode.defaultMode,
+        );
+      }
       await _tts.setLanguage('en-US');
-      await _tts.setSpeechRate(0.48);
+      await _tts.setSpeechRate(0.5);
+      await _tts.setVolume(1.0);
       await _tts.setPitch(1.0);
-      await _tts.awaitSpeakCompletion(true);
+      await _tts.awaitSpeakCompletion(false);
+
       _tts.setCompletionHandler(() {
         if (mounted) setState(() => _isPlayingTts = false);
       });
@@ -72,92 +89,35 @@ class _WordDetailBottomSheetState extends State<WordDetailBottomSheet> {
       return;
     }
     try {
-      setState(() => _isPlayingTts = true);
+      if (mounted) setState(() => _isPlayingTts = true);
       HapticFeedback.lightImpact();
       await _tts.stop();
 
       // Auto-reset fallback
-      Future.delayed(const Duration(milliseconds: 1800), () {
+      Future.delayed(const Duration(milliseconds: 1400), () {
         if (mounted && _isPlayingTts) {
           setState(() => _isPlayingTts = false);
         }
       });
 
-      await _tts.speak(_currentWord.en);
+      await _tts.speak(widget.word.en);
     } catch (_) {
-    } finally {
-      if (mounted) {
-        setState(() => _isPlayingTts = false);
-      }
+      if (mounted) setState(() => _isPlayingTts = false);
     }
-  }
-
-  List<SynonymBadgeItem> _computeSynonyms(WordModel targetWord) {
-    if (widget.allWords.isEmpty) return [];
-
-    final currentEn = targetWord.en.toLowerCase().trim();
-    final atomicMeanings = targetWord.tr
-        .split(',')
-        .map((s) => s.trim().toLowerCase())
-        .where((s) => s.isNotEmpty)
-        .toSet()
-        .toList();
-
-    if (atomicMeanings.isEmpty && targetWord.tr.trim().isNotEmpty) {
-      atomicMeanings.add(targetWord.tr.trim().toLowerCase());
-    }
-
-    final result = <SynonymBadgeItem>[];
-    final seenWordIds = <dynamic>{};
-
-    for (int i = 0; i < atomicMeanings.length; i++) {
-      final meaning = atomicMeanings[i];
-      final gradient = StudyController.synonymGradients[
-          i % StudyController.synonymGradients.length];
-
-      for (final w in widget.allWords) {
-        final wEn = w.en.toLowerCase().trim();
-        if (wEn == currentEn) continue;
-
-        final wMeanings = w.tr
-            .split(',')
-            .map((s) => s.trim().toLowerCase())
-            .where((s) => s.isNotEmpty)
-            .toList();
-
-        final matches = wMeanings.any(
-          (wm) => wm == meaning || wm.contains(meaning) || meaning.contains(wm),
-        );
-
-        if (matches) {
-          final wordKey = w.id ?? '${w.en}_${w.tr}';
-          if (!seenWordIds.contains(wordKey)) {
-            seenWordIds.add(wordKey);
-            result.add(
-              SynonymBadgeItem(
-                word: w,
-                matchedMeaning: meaning,
-                gradient: gradient,
-              ),
-            );
-          }
-        }
-      }
-    }
-
-    return result;
   }
 
   @override
   void dispose() {
     _tts.stop();
+    _scrollController.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final synonyms = _computeSynonyms(_currentWord);
+    final isDark = widget.isDark;
+    final hasExample = widget.word.example != null &&
+        widget.word.example!.trim().isNotEmpty;
 
     return Container(
       constraints: BoxConstraints(
@@ -175,249 +135,141 @@ class _WordDetailBottomSheetState extends State<WordDetailBottomSheet> {
         ],
       ),
       child: SafeArea(
+        top: false,
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
+            // Grabber Drag Handle
             const SizedBox(height: 12),
-            // Drag Handle
             Container(
-              width: 44,
+              width: 42,
               height: 5,
               decoration: BoxDecoration(
-                color: isDark ? Colors.white24 : Colors.black12,
+                color: isDark
+                    ? const Color(0xFF48484A)
+                    : const Color(0xFFD1D1D6),
                 borderRadius: BorderRadius.circular(3),
               ),
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 12),
 
+            // Scrollable Content Area (Ensures long examples never overflow)
             Flexible(
-              child: SingleChildScrollView(
-                physics: const BouncingScrollPhysics(),
-                padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    // Header Row with TTS & Close
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        if (_currentWord.listName != null &&
-                            _currentWord.listName!.isNotEmpty)
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 10, vertical: 4),
-                            decoration: BoxDecoration(
-                              color: AppColors.turquoise.withValues(alpha: 0.12),
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                            child: Text(
-                              _currentWord.listName!,
-                              style: const TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.w700,
-                                color: AppColors.turquoise,
-                              ),
-                            ),
-                          )
-                        else
-                          const SizedBox.shrink(),
-                        IconButton(
-                          icon: const Icon(Icons.close_rounded),
-                          onPressed: () => Navigator.of(context).pop(),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-
-                    // English Word & Audio Icon
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Flexible(
-                          child: Text(
-                            _currentWord.en,
-                            textAlign: TextAlign.center,
-                            style: TextStyle(
-                              fontSize: 30,
-                              fontWeight: FontWeight.w800,
-                              color: isDark
-                                  ? AppColors.darkTextPrimary
-                                  : AppColors.lightTextPrimary,
-                            ),
+              child: Scrollbar(
+                controller: _scrollController,
+                thumbVisibility: false,
+                child: SingleChildScrollView(
+                  controller: _scrollController,
+                  physics: const BouncingScrollPhysics(),
+                  padding: const EdgeInsets.fromLTRB(28, 8, 28, 36),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      // List Tag Badge (if available)
+                      if (widget.word.listName != null &&
+                          widget.word.listName!.isNotEmpty &&
+                          widget.word.listName != 'General') ...[
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 10, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: AppColors.turquoise.withValues(alpha: 0.12),
+                            borderRadius: BorderRadius.circular(10),
                           ),
-                        ),
-                        const SizedBox(width: 10),
-                        InkWell(
-                          onTap: _speak,
-                          borderRadius: BorderRadius.circular(20),
-                          child: Container(
-                            padding: const EdgeInsets.all(8),
-                            decoration: BoxDecoration(
-                              color: AppColors.turquoise.withValues(alpha: 0.15),
-                              shape: BoxShape.circle,
-                            ),
-                            child: Icon(
-                              _isPlayingTts
-                                  ? Icons.volume_up_rounded
-                                  : Icons.volume_down_rounded,
-                              size: 20,
+                          child: Text(
+                            widget.word.listName!,
+                            style: const TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
                               color: AppColors.turquoise,
                             ),
                           ),
                         ),
+                        const SizedBox(height: 12),
                       ],
-                    ),
-                    const SizedBox(height: 8),
 
-                    // Turkish Meaning
-                    Text(
-                      _currentWord.tr,
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.w600,
-                        color: isDark
-                            ? AppColors.darkTextSecondary
-                            : const Color(0xFF6C6C70),
+                      // English Word + Speaker Icon Button
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Flexible(
+                            child: Text(
+                              widget.word.en,
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                fontSize: 30,
+                                fontWeight: FontWeight.w800,
+                                color: isDark
+                                    ? AppColors.darkTextPrimary
+                                    : AppColors.lightTextPrimary,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          IconButton(
+                            icon: Icon(
+                              _isPlayingTts
+                                  ? Icons.volume_up_rounded
+                                  : Icons.volume_down_rounded,
+                              size: 26,
+                              color: const Color(0xFF007AFF), // iOS Accent Blue
+                            ),
+                            onPressed: _speak,
+                          ),
+                        ],
                       ),
-                    ),
-                    const SizedBox(height: 20),
+                      const SizedBox(height: 6),
 
-                    // Example Sentence Box
-                    Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.all(18),
-                      decoration: BoxDecoration(
-                        color: isDark
-                            ? AppColors.darkBackground
-                            : const Color(0xFFF2F2F7),
-                        borderRadius: BorderRadius.circular(18),
-                        border: Border.all(
+                      // Turkish Meaning
+                      Text(
+                        widget.word.tr,
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.w500,
+                          color: isDark
+                              ? AppColors.darkTextSecondary
+                              : const Color(0xFF8E8E93),
+                        ),
+                      ),
+                      const SizedBox(height: 20),
+
+                      // Divider Line
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        child: Divider(
                           color: isDark
                               ? AppColors.darkBorder
                               : const Color(0xFFE5E5EA),
-                          width: 1.2,
+                          height: 1,
+                          thickness: 1,
                         ),
                       ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            children: [
-                              Icon(
-                                Icons.format_quote_rounded,
-                                size: 18,
-                                color: isDark
-                                    ? AppColors.darkTextMuted
-                                    : AppColors.lightTextMuted,
-                              ),
-                              const SizedBox(width: 6),
-                              Text(
-                                'ÖRNEK KULLANIM',
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w700,
-                                  letterSpacing: 0.8,
-                                  color: isDark
-                                      ? AppColors.darkTextMuted
-                                      : AppColors.lightTextMuted,
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 8),
-                          SelectableText(
-                            (_currentWord.example != null &&
-                                    _currentWord.example!.trim().isNotEmpty)
-                                ? _currentWord.example!
-                                : 'Bu kelime için örnek cümle eklenmemiş.',
-                            style: TextStyle(
-                              fontSize: 14.5,
-                              fontStyle: FontStyle.italic,
-                              height: 1.45,
-                              color: (_currentWord.example != null &&
-                                      _currentWord.example!.trim().isNotEmpty)
-                                  ? (isDark
-                                      ? AppColors.darkTextPrimary
-                                      : Colors.black87)
-                                  : const Color(0xFF8E8E93),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
+                      const SizedBox(height: 20),
 
-                    if (synonyms.isNotEmpty) ...[
-                      const SizedBox(height: 22),
-                      Row(
-                        children: [
-                          const Icon(Icons.auto_awesome_rounded,
-                              size: 16, color: AppColors.orange),
-                          const SizedBox(width: 6),
-                          Text(
-                            'EŞ ANLAMLILAR (SYNONYMS)',
-                            style: TextStyle(
-                              fontSize: 11,
-                              fontWeight: FontWeight.w700,
-                              letterSpacing: 0.8,
-                              color: isDark
+                      // Example Sentence with SelectableText
+                      SelectableText(
+                        hasExample
+                            ? widget.word.example!
+                            : 'Bu kelime için örnek cümle eklenmemiş.',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: 15.0,
+                          fontStyle: FontStyle.italic,
+                          height: 1.5,
+                          color: hasExample
+                              ? (isDark
+                                  ? AppColors.darkTextPrimary
+                                  : AppColors.lightTextPrimary)
+                              : (isDark
                                   ? AppColors.darkTextMuted
-                                  : AppColors.lightTextMuted,
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 10),
-                      Wrap(
-                        spacing: 8,
-                        runSpacing: 8,
-                        children: synonyms.map((badge) {
-                          return Container(
-                            decoration: BoxDecoration(
-                              gradient: LinearGradient(
-                                colors: badge.gradient,
-                                begin: Alignment.centerLeft,
-                                end: Alignment.centerRight,
-                              ),
-                              borderRadius: BorderRadius.circular(16),
-                              boxShadow: [
-                                BoxShadow(
-                                  color:
-                                      badge.gradient.first.withValues(alpha: 0.3),
-                                  blurRadius: 6,
-                                  offset: const Offset(0, 2),
-                                ),
-                              ],
-                            ),
-                            child: Material(
-                              color: Colors.transparent,
-                              child: InkWell(
-                                borderRadius: BorderRadius.circular(16),
-                                onTap: () {
-                                  HapticFeedback.selectionClick();
-                                  setState(() {
-                                    _currentWord = badge.word;
-                                  });
-                                },
-                                child: Padding(
-                                  padding: const EdgeInsets.symmetric(
-                                      horizontal: 14, vertical: 7),
-                                  child: Text(
-                                    badge.word.en,
-                                    style: const TextStyle(
-                                      fontSize: 13,
-                                      fontWeight: FontWeight.w600,
-                                      color: Colors.white,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ),
-                          );
-                        }).toList(),
+                                  : const Color(0xFF8E8E93)),
+                        ),
                       ),
                     ],
-                  ],
+                  ),
                 ),
               ),
             ),
