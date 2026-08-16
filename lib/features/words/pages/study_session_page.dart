@@ -80,7 +80,13 @@ class _StudySessionPageState extends ConsumerState<StudySessionPage>
     // Arama kutusu veya metin alanında yazıyorsa klavye kısayollarını devre dışı bırak
     final isEditingText =
         FocusManager.instance.primaryFocus?.context?.widget is EditableText;
-    if (isEditingText) return false;
+    if (isEditingText) {
+      if (event.logicalKey == LogicalKeyboardKey.escape) {
+        FocusScope.of(context).unfocus();
+        return true;
+      }
+      return false;
+    }
 
     final studyState = ref.read(studyControllerProvider);
     final studyNotifier = ref.read(studyControllerProvider.notifier);
@@ -90,42 +96,49 @@ class _StudySessionPageState extends ConsumerState<StudySessionPage>
     final hasPrev = hasWords && (studyState.isRandom || currentIndex > 0);
     final hasNext = hasWords && (studyState.isRandom || currentIndex < totalCount - 1);
 
-    // Sağ Yön Tuşu: Sonraki Kelime
-    if (event.logicalKey == LogicalKeyboardKey.arrowRight) {
+    // Sağ Yön Tuşu / D: Sonraki Kelime
+    if (event.logicalKey == LogicalKeyboardKey.arrowRight ||
+        event.logicalKey == LogicalKeyboardKey.keyD) {
       if (hasNext) {
         HapticFeedback.lightImpact();
         studyNotifier.next();
         return true;
       }
     }
-    // Sol Yön Tuşu: Önceki Kelime
-    else if (event.logicalKey == LogicalKeyboardKey.arrowLeft) {
+    // Sol Yön Tuşu / A: Önceki Kelime
+    else if (event.logicalKey == LogicalKeyboardKey.arrowLeft ||
+        event.logicalKey == LogicalKeyboardKey.keyA) {
       if (hasPrev) {
         HapticFeedback.lightImpact();
         studyNotifier.prev();
         return true;
       }
     }
-    // Yukarı Yön Tuşu veya Space: Kartı Döndür
+    // Yukarı Yön Tuşu / Space / W: Kartı Döndür
     else if (event.logicalKey == LogicalKeyboardKey.arrowUp ||
-        event.logicalKey == LogicalKeyboardKey.space) {
+        event.logicalKey == LogicalKeyboardKey.space ||
+        event.logicalKey == LogicalKeyboardKey.keyW) {
       if (hasWords) {
         HapticFeedback.selectionClick();
         studyNotifier.flip();
         return true;
       }
     }
-    // Aşağı Yön Tuşu: Rastgele (Random) Modunu Aç/Kapat
-    else if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
+    // Aşağı Yön Tuşu / S / R: Rastgele (Random) Modunu Aç/Kapat
+    else if (event.logicalKey == LogicalKeyboardKey.arrowDown ||
+        event.logicalKey == LogicalKeyboardKey.keyS ||
+        event.logicalKey == LogicalKeyboardKey.keyR) {
       if (hasWords) {
         HapticFeedback.mediumImpact();
         studyNotifier.toggleRandom();
         return true;
       }
     }
-    // Nokta (.) Tuşu: Sesi Oynat (TTS)
+    // Nokta (.) / V / L / NumpadDecimal: Sesi Oynat (TTS)
     else if (event.logicalKey == LogicalKeyboardKey.period ||
-        event.logicalKey == LogicalKeyboardKey.numpadDecimal) {
+        event.logicalKey == LogicalKeyboardKey.numpadDecimal ||
+        event.logicalKey == LogicalKeyboardKey.keyV ||
+        event.logicalKey == LogicalKeyboardKey.keyL) {
       if (hasWords) {
         HapticFeedback.lightImpact();
         studyNotifier.speakCurrent();
@@ -320,6 +333,7 @@ class _StudySessionPageState extends ConsumerState<StudySessionPage>
         actions: [
           // Add Word Button (Green)
           IconButton(
+            focusNode: FocusNode(canRequestFocus: false, skipTraversal: true),
             icon: const Icon(Icons.add_rounded, size: 26, color: Color(0xFF34C759)),
             tooltip: 'Yeni Kelime Ekle',
             onPressed: () async {
@@ -361,6 +375,7 @@ class _StudySessionPageState extends ConsumerState<StudySessionPage>
 
           // Edit Button (Green)
           IconButton(
+            focusNode: FocusNode(canRequestFocus: false, skipTraversal: true),
             icon: const Icon(Icons.edit_outlined, size: 22, color: Color(0xFF34C759)),
             tooltip: 'Edit',
             onPressed: hasWords && currentWord != null
@@ -404,6 +419,7 @@ class _StudySessionPageState extends ConsumerState<StudySessionPage>
 
           // Delete Button (Green)
           IconButton(
+            focusNode: FocusNode(canRequestFocus: false, skipTraversal: true),
             icon: const Icon(Icons.delete_outline_rounded, size: 22, color: Color(0xFF34C759)),
             tooltip: 'Delete',
             onPressed: hasWords && currentWord != null
@@ -571,6 +587,7 @@ class _StudySessionPageState extends ConsumerState<StudySessionPage>
           ),
           suffixIcon: _searchController.text.isNotEmpty
               ? IconButton(
+                  focusNode: FocusNode(canRequestFocus: false, skipTraversal: true),
                   icon: const Icon(Icons.clear_rounded, size: 18),
                   padding: EdgeInsets.zero,
                   constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
@@ -644,6 +661,8 @@ class _StudySessionPageState extends ConsumerState<StudySessionPage>
                 child: Material(
                   color: Colors.transparent,
                   child: InkWell(
+                    canRequestFocus: false,
+                    focusNode: FocusNode(canRequestFocus: false, skipTraversal: true),
                     borderRadius: BorderRadius.circular(10),
                     onTap: () {
                       showWordDetailModal(context, word: badge.word);
@@ -787,39 +806,43 @@ class _StudySessionPageState extends ConsumerState<StudySessionPage>
 
   Widget _buildProgressSlider(bool isDark, bool hasWords, int currentIndex,
       int totalCount, StudyController studyNotifier) {
-    return SliderTheme(
-      data: SliderTheme.of(context).copyWith(
-        activeTrackColor: const Color(0xFFE5E5EA),
-        inactiveTrackColor:
-            isDark ? AppColors.darkBorder : const Color(0xFFE5E5EA),
-        disabledActiveTrackColor:
-            isDark ? AppColors.darkBorder : const Color(0xFFE5E5EA),
-        disabledInactiveTrackColor:
-            isDark ? AppColors.darkBorder : const Color(0xFFE5E5EA),
-        thumbColor: Colors.white,
-        disabledThumbColor: Colors.white.withValues(alpha: 0.6),
-        overlayColor: Colors.transparent,
-        trackHeight: 4,
-        thumbShape: const RoundSliderThumbShape(
-          enabledThumbRadius: 10,
-          disabledThumbRadius: 10,
-          elevation: 3,
+    return Focus(
+      canRequestFocus: false,
+      skipTraversal: true,
+      child: SliderTheme(
+        data: SliderTheme.of(context).copyWith(
+          activeTrackColor: const Color(0xFFE5E5EA),
+          inactiveTrackColor:
+              isDark ? AppColors.darkBorder : const Color(0xFFE5E5EA),
+          disabledActiveTrackColor:
+              isDark ? AppColors.darkBorder : const Color(0xFFE5E5EA),
+          disabledInactiveTrackColor:
+              isDark ? AppColors.darkBorder : const Color(0xFFE5E5EA),
+          thumbColor: Colors.white,
+          disabledThumbColor: Colors.white.withValues(alpha: 0.6),
+          overlayColor: Colors.transparent,
+          trackHeight: 4,
+          thumbShape: const RoundSliderThumbShape(
+            enabledThumbRadius: 10,
+            disabledThumbRadius: 10,
+            elevation: 3,
+          ),
         ),
-      ),
-      child: Slider(
-        value: (hasWords && totalCount > 1)
-            ? currentIndex.toDouble().clamp(0.0, (totalCount - 1).toDouble())
-            : 0.0,
-        min: 0.0,
-        max: (hasWords && totalCount > 1)
-            ? (totalCount - 1).toDouble()
-            : 1.0,
-        divisions: (hasWords && totalCount > 1) ? (totalCount - 1) : 1,
-        onChanged: (hasWords && totalCount > 1)
-            ? (val) {
-                studyNotifier.seekTo(val.round());
-              }
-            : null,
+        child: Slider(
+          value: (hasWords && totalCount > 1)
+              ? currentIndex.toDouble().clamp(0.0, (totalCount - 1).toDouble())
+              : 0.0,
+          min: 0.0,
+          max: (hasWords && totalCount > 1)
+              ? (totalCount - 1).toDouble()
+              : 1.0,
+          divisions: (hasWords && totalCount > 1) ? (totalCount - 1) : 1,
+          onChanged: (hasWords && totalCount > 1)
+              ? (val) {
+                  studyNotifier.seekTo(val.round());
+                }
+              : null,
+        ),
       ),
     );
   }
@@ -959,6 +982,8 @@ class _StudySessionPageState extends ConsumerState<StudySessionPage>
           color: backgroundColor,
           borderRadius: BorderRadius.circular(16),
           child: InkWell(
+            canRequestFocus: false,
+            focusNode: FocusNode(canRequestFocus: false, skipTraversal: true),
             borderRadius: BorderRadius.circular(16),
             onTap: isEnabled ? onTap : null,
             child: Center(
