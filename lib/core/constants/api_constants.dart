@@ -20,6 +20,10 @@ class ApiConstants {
   static const String search = '/api/words/search';
   static const String synonymGroups = '/api/words/synonym-groups';
 
+  // Daily Quiz endpoints
+  static const String dailyQuiz = '/api/dailyquiz';
+  static const String dailyQuizProgress = '/api/dailyquiz/progress';
+
   static String wordById(dynamic id) => '/api/words/$id';
   static String wordsByUserId(String userId) => '/api/words/user/$userId';
 

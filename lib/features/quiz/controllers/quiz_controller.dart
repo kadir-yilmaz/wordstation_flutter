@@ -1,3 +1,4 @@
+import 'dart:developer' as dev;
 import 'dart:math';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/services/sound_service.dart';
@@ -7,6 +8,7 @@ import '../../words/models/word_model.dart';
 import '../models/daily_quiz_plan_model.dart';
 import '../models/quiz_history_model.dart';
 import '../models/quiz_question.dart';
+import '../services/daily_quiz_api_service.dart';
 
 class QuizState {
   final List<QuizQuestion> questions;
@@ -92,12 +94,14 @@ final quizControllerProvider =
     StateNotifierProvider<QuizController, QuizState>((ref) {
   final soundService = ref.watch(soundServiceProvider);
   final storage = ref.watch(secureStorageServiceProvider);
+  final apiService = ref.watch(dailyQuizApiServiceProvider);
   final initialWords = ref.read(wordListControllerProvider).words;
 
   final controller = QuizController(
     initialWords,
     soundService: soundService,
     storage: storage,
+    apiService: apiService,
   );
 
   // Update words pool gracefully without destroying the QuizController and its history state
@@ -112,14 +116,18 @@ class QuizController extends StateNotifier<QuizState> {
   List<WordModel> _allWords;
   final SoundService _soundService;
   final SecureStorageService _storage;
+  final DailyQuizApiService? _apiService;
   final Random _random = Random();
 
   QuizController(
     this._allWords, {
     SoundService? soundService,
     SecureStorageService? storage,
+    DailyQuizApiService? apiService,
   })  : _soundService = soundService ?? SoundService(),
         _storage = storage ?? SecureStorageService(),
+        // ignore: prefer_initializing_formals
+        _apiService = apiService,
         super(QuizState.initial()) {
     loadInitialData();
   }
@@ -129,17 +137,54 @@ class QuizController extends StateNotifier<QuizState> {
   }
 
   Future<void> loadInitialData() async {
+    // 1. Instant local load for smooth UX
     final history = await _storage.getQuizHistoryList();
     final todayStr = _formatTodayDate();
-    final dailyPlan = await _storage.getDailyQuizPlan();
-    final isDailyDone = dailyPlan?.isCompletedToday(todayStr) ?? false;
+    final localPlan = await _storage.getDailyQuizPlan();
+    final isDailyDone = localPlan?.isCompletedToday(todayStr) ?? false;
 
-    if (!mounted) return;
-    state = state.copyWith(
-      historyList: history,
-      dailyPlan: dailyPlan,
-      isDailyQuizCompletedToday: isDailyDone,
-    );
+    if (mounted) {
+      state = state.copyWith(
+        historyList: history,
+        dailyPlan: localPlan,
+        isDailyQuizCompletedToday: isDailyDone,
+      );
+    }
+
+    // 2. Cloud synchronization in background
+    if (_apiService != null) {
+      try {
+        final cloudPlan = await _apiService.getPlan();
+        if (cloudPlan != null) {
+          await _storage.saveDailyQuizPlan(cloudPlan);
+          if (!mounted) return;
+          final cloudDone = cloudPlan.isCompletedToday(todayStr);
+          state = state.copyWith(
+            dailyPlan: cloudPlan,
+            isDailyQuizCompletedToday: cloudDone,
+          );
+        } else if (localPlan != null) {
+          // If local plan exists but cloud has none, sync local to cloud
+          try {
+            final synced = await _apiService.createOrResetPlan(
+              listName: localPlan.listName,
+              dailyCount: localPlan.dailyCount,
+              isEnglishToTurkish: localPlan.isEnglishToTurkish,
+              shuffledWordIds: localPlan.shuffledWordIds,
+            );
+            if (synced != null && localPlan.currentPointer > 0) {
+              await _apiService.updateProgress(
+                newPointer: localPlan.currentPointer,
+                lastCompletedDate: localPlan.lastCompletedDate ?? '',
+                streakDays: localPlan.streakDays,
+              );
+            }
+          } catch (_) {}
+        }
+      } catch (e) {
+        dev.log('QuizController.loadInitialData cloud sync error: $e');
+      }
+    }
   }
 
   Future<bool> startOrResetDailyPlan({
@@ -158,7 +203,7 @@ class QuizController extends StateNotifier<QuizState> {
     final shuffled = List<WordModel>.from(matchingWords)..shuffle(_random);
     final shuffledIds = shuffled.map((w) => w.id).toList();
 
-    final plan = DailyQuizPlanModel(
+    var plan = DailyQuizPlanModel(
       id: DateTime.now().millisecondsSinceEpoch.toString(),
       listName: listName,
       dailyCount: dailyCount,
@@ -170,12 +215,36 @@ class QuizController extends StateNotifier<QuizState> {
       createdAt: DateTime.now(),
     );
 
+    // Try cloud creation first
+    if (_apiService != null) {
+      try {
+        final cloudPlan = await _apiService.createOrResetPlan(
+          listName: listName,
+          dailyCount: dailyCount,
+          isEnglishToTurkish: englishToTurkish,
+          shuffledWordIds: shuffledIds,
+        );
+        if (cloudPlan != null) {
+          plan = cloudPlan;
+        }
+      } catch (e) {
+        dev.log('QuizController.startOrResetDailyPlan cloud error: $e');
+      }
+    }
+
     await _storage.saveDailyQuizPlan(plan);
     state = state.copyWith(dailyPlan: plan, isDailyQuizCompletedToday: false);
     return true;
   }
 
   Future<void> deleteDailyPlan() async {
+    if (_apiService != null) {
+      try {
+        await _apiService.deletePlan();
+      } catch (e) {
+        dev.log('QuizController.deleteDailyPlan cloud error: $e');
+      }
+    }
     await _storage.deleteDailyQuizPlan();
     state = state.copyWith(clearDailyPlan: true, isDailyQuizCompletedToday: false);
   }
@@ -391,15 +460,33 @@ class QuizController extends StateNotifier<QuizState> {
       final plan = state.dailyPlan!;
       final newPointer = min(plan.currentPointer + state.totalQuestions, plan.totalWords);
       final todayStr = _formatTodayDate();
+      final newStreak = plan.streakDays + 1;
 
       updatedPlan = plan.copyWith(
         currentPointer: newPointer,
         lastCompletedDate: todayStr,
-        streakDays: plan.streakDays + 1,
+        streakDays: newStreak,
       );
 
       await _storage.saveDailyQuizPlan(updatedPlan);
       await _storage.saveDailyQuizDate(todayStr);
+
+      // Async cloud sync
+      if (_apiService != null) {
+        try {
+          final cloudPlan = await _apiService.updateProgress(
+            newPointer: newPointer,
+            lastCompletedDate: todayStr,
+            streakDays: newStreak,
+          );
+          if (cloudPlan != null) {
+            updatedPlan = cloudPlan;
+            await _storage.saveDailyQuizPlan(updatedPlan);
+          }
+        } catch (e) {
+          dev.log('QuizController._saveCompletedQuiz cloud progress update error: $e');
+        }
+      }
     }
 
     final updatedHistory = await _storage.getQuizHistoryList();

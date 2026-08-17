@@ -179,6 +179,32 @@ void main() {
       expect(fromJson.totalWords, 14);
       expect(fromJson.shuffledWordIds.length, 14);
     });
+
+    test('DailyQuizPlanModel parses backend .NET DTO response format', () {
+      final backendJson = {
+        'id': 12,
+        'userId': 'user_guid_123',
+        'listName': 'Advanced',
+        'dailyCount': 10,
+        'shuffledWordIds': [101, 102, 103, 104],
+        'currentPointer': 2,
+        'lastCompletedDate': '2026-08-17',
+        'streakDays': 3,
+        'isEnglishToTurkish': true,
+        'createdAt': '2026-08-17T12:00:00Z',
+        'updatedAt': '2026-08-17T12:00:00Z',
+      };
+
+      final plan = DailyQuizPlanModel.fromJson(backendJson);
+      expect(plan.id, '12');
+      expect(plan.listName, 'Advanced');
+      expect(plan.dailyCount, 10);
+      expect(plan.shuffledWordIds, [101, 102, 103, 104]);
+      expect(plan.currentPointer, 2);
+      expect(plan.lastCompletedDate, '2026-08-17');
+      expect(plan.streakDays, 3);
+      expect(plan.isEnglishToTurkish, isTrue);
+    });
   });
 
   group('Quiz Controller Tests', () {

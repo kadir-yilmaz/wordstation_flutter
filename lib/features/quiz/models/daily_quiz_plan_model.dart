@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 class DailyQuizPlanModel {
   final String id;
   final String listName;
@@ -84,18 +86,37 @@ class DailyQuizPlanModel {
       };
 
   factory DailyQuizPlanModel.fromJson(Map<String, dynamic> json) {
+    List<dynamic> parsedShuffledIds = [];
+    final rawIds = json['shuffledWordIds'] ?? json['ShuffledWordIds'];
+    if (rawIds is List) {
+      parsedShuffledIds = rawIds;
+    } else if (rawIds is String && rawIds.isNotEmpty) {
+      try {
+        final decoded = jsonDecode(rawIds);
+        if (decoded is List) {
+          parsedShuffledIds = decoded;
+        }
+      } catch (_) {}
+    }
+
+    final rawCreatedAt = json['createdAt'] ?? json['CreatedAt'];
+    DateTime createdAtVal = DateTime.now();
+    if (rawCreatedAt != null) {
+      createdAtVal = DateTime.tryParse(rawCreatedAt.toString()) ?? DateTime.now();
+    }
+
+    final rawId = json['id'] ?? json['Id'];
+
     return DailyQuizPlanModel(
-      id: json['id'] as String? ?? '',
-      listName: json['listName'] as String? ?? 'Tümü',
-      dailyCount: (json['dailyCount'] as int?) ?? 10,
-      shuffledWordIds: (json['shuffledWordIds'] as List<dynamic>?) ?? [],
-      currentPointer: (json['currentPointer'] as int?) ?? 0,
-      lastCompletedDate: json['lastCompletedDate'] as String?,
-      streakDays: (json['streakDays'] as int?) ?? 0,
-      isEnglishToTurkish: (json['isEnglishToTurkish'] as bool?) ?? true,
-      createdAt: json['createdAt'] != null
-          ? DateTime.tryParse(json['createdAt'] as String) ?? DateTime.now()
-          : DateTime.now(),
+      id: rawId?.toString() ?? '',
+      listName: (json['listName'] ?? json['ListName'] ?? 'Tümü').toString(),
+      dailyCount: (json['dailyCount'] ?? json['DailyCount'] as int?) ?? 10,
+      shuffledWordIds: parsedShuffledIds,
+      currentPointer: (json['currentPointer'] ?? json['CurrentPointer'] as int?) ?? 0,
+      lastCompletedDate: (json['lastCompletedDate'] ?? json['LastCompletedDate'])?.toString(),
+      streakDays: (json['streakDays'] ?? json['StreakDays'] as int?) ?? 0,
+      isEnglishToTurkish: (json['isEnglishToTurkish'] ?? json['IsEnglishToTurkish'] as bool?) ?? true,
+      createdAt: createdAtVal,
     );
   }
 }
