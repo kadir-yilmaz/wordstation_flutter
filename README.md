@@ -1,20 +1,17 @@
 # WordStation Flutter
 
-WordStation, kullanıcıların kelime öğrenme, ezberleme ve pratik yapma süreçlerini yönetmelerini sağlayan çoklu platform (iOS, Android, macOS ve Web) destekli bir Flutter uygulamasıdır.
-
----
-
-## Genel Bakış
-
-WordStation; modern mimari prensipleri, durum yönetimi (State Management), güvenli kimlik doğrulama akışları ve tüm ekran boyutlarına uyum sağlayan responsive arayüz yapısı ile geliştirilmiştir.
+WordStation, kullanıcıların kelime öğrenme, ezberleme ve pratik yapma süreçlerini yönetmelerini sağlayan çoklu platform destekli bir Flutter uygulamasıdır.
 
 ---
 
 ## Desteklenen Platformlar
+(Not: Aşağıdaki tüm platformlar için google ile giriş desteği aktif edilmiştir. Çıktılar workflow ile alınıp test edilmiştir.)
 
 - Android
 - iOS
+- Linux
 - macOS
+- Windows
 - Web
 
 ---
@@ -95,82 +92,3 @@ Uygulama, her platformun kendi güvenlik ve SDK dinamiklerine uygun şekilde yap
    - Profil bilgilerinin (isim, avatar vb.) istemci tarafında eksiksiz çekilebilmesi için Google People API entegrasyonu ile desteklenmiştir.
    - `kIsWeb` kontrolleri ile platforma özgü kütüphane çakışmaları engellenmiştir.
 
----
-
-## Responsive Tasarım İlkeleri
-
-- **Ekran Boyutu Yönetimi:** `ResponsiveLayout` ve `ResponsiveContent` bileşenleri ile içerik genişliği masaüstü ekranlarda dengelenir (maksimum içerik genişliği sınırlandırması).
-- **Taşma (Overflow) Önleme:** Grid listelerinde oran tabanlı `childAspectRatio` yerine piksel garantili `mainAxisExtent` kullanılarak metin sığmama ve taşma hataları önlenmiştir.
-- **Navigasyon Geçişleri:** Geniş ekranlarda (`width >= 720px`) sol dikey menüye, mobil ekranlarda alt menü çubuğuna otomatik geçiş sağlanır.
-
----
-
-## Proje Dizin Yapısı
-
-Proje, özellik odaklı (Feature-First) ve katmanlı mimariye uygun olarak organize edilmiştir:
-
-```text
-lib/
-├── core/
-│   ├── constants/       # Sabitler ve API uç noktaları
-│   ├── network/         # Dio istemcisi, interceptor ve ağ servisleri
-│   ├── services/        # TTS ve yardımcı servisler
-│   ├── storage/         # Güvenli yerel veri depolama
-│   ├── theme/           # Açık/koyu tema tanımları ve tema denetleyicisi
-│   └── widgets/         # Yeniden kullanılabilir ve responsive ortak bileşenler
-│
-├── features/
-│   ├── auth/            # Giriş, kayıt ve oturum yönetimi ekranları/denetleyicileri
-│   ├── navigation/      # Adaptif ana navigasyon ve menü yönetimi
-│   ├── profile/         # Kullanıcı profili ve ayarlar
-│   ├── quiz/            # Sınav, test ve soru akışları
-│   └── words/           # Kelime listeleri, çalışma seansları ve detay görünümleri
-│
-└── main.dart            # Uygulama başlangıç noktası ve ProviderScope tanımı
-```
-
----
-
-## Kurulum ve Çalıştırma
-
-### Gereksinimler
-
-- Flutter SDK (3.13.0 veya üzeri)
-- Dart SDK
-- Android Studio / Xcode / VS Code
-- Chrome (Web geliştirme ve test için)
-
-### Adımlar
-
-1. **Depoyu klonlayın:**
-   ```bash
-   git clone <repository-url>
-   cd wordstation_flutter
-   ```
-
-2. **Bağımlılıkları yükleyin:**
-   ```bash
-   flutter pub get
-   ```
-
-3. **Uygulamayı hedef platformda çalıştırın:**
-
-   - **Android:**
-     ```bash
-     flutter run -d android
-     ```
-
-   - **iOS:**
-     ```bash
-     flutter run -d ios
-     ```
-
-   - **macOS:**
-     ```bash
-     flutter run -d macos
-     ```
-
-   - **Web (Sabit port ile):**
-     ```bash
-     flutter run -d chrome --web-port=52767
-     ```
