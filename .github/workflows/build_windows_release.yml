@@ -72,8 +72,13 @@ jobs:
           echo "Windows Versiyonu: $VERSION (Build: $BUILD_NUM)"
 
       - name: Build Windows Application (Release)
+        env:
+          DESKTOP_CLIENT_SECRET: ${{ secrets.DESKTOP_CLIENT_SECRET }}
         run: |
-          flutter build windows --release --build-name="${{ steps.versioning.outputs.version }}" --build-number="${{ steps.versioning.outputs.build_number }}"
+          flutter build windows --release \
+            --build-name="${{ steps.versioning.outputs.version }}" \
+            --build-number="${{ steps.versioning.outputs.build_number }}" \
+            --dart-define=DESKTOP_CLIENT_SECRET="${{ secrets.DESKTOP_CLIENT_SECRET }}"
 
       - name: Prepare Windows Release ZIP
         shell: pwsh

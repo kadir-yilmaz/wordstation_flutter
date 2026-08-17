@@ -39,6 +39,10 @@ class GoogleAuthConstants {
       '276618571409-4fsiaaab85ctjbfqvb4pg5mqnluh84rr.apps.googleusercontent.com';
   static const String desktopClientId =
       '276618571409-j079peo6q2sd1gg2s77cq3rop72s56ia.apps.googleusercontent.com';
+  static const String desktopClientSecret = String.fromEnvironment(
+    'DESKTOP_CLIENT_SECRET',
+    defaultValue: '',
+  );
 
   /// On iOS/macOS returns Apple Client ID, on Web returns Web Client ID, on Windows/Linux returns Desktop Client ID.
   static String? get clientId {

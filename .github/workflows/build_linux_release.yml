@@ -75,10 +75,13 @@ jobs:
           echo "Linux Versiyonu: $VERSION (Build: $BUILD_NUM)"
 
       - name: Build Linux Application (Release)
+        env:
+          DESKTOP_CLIENT_SECRET: ${{ secrets.DESKTOP_CLIENT_SECRET }}
         run: |
           flutter build linux --release \
             --build-name="${{ steps.versioning.outputs.version }}" \
-            --build-number="${{ steps.versioning.outputs.build_number }}"
+            --build-number="${{ steps.versioning.outputs.build_number }}" \
+            --dart-define=DESKTOP_CLIENT_SECRET="${{ secrets.DESKTOP_CLIENT_SECRET }}"
 
       - name: Prepare Linux Release Archive (tar.gz)
         run: |

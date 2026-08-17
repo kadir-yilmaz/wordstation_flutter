@@ -477,6 +477,8 @@ class AuthService {
         options: Options(contentType: Headers.formUrlEncodedContentType),
         data: {
           'client_id': clientId,
+          if (GoogleAuthConstants.desktopClientSecret.isNotEmpty)
+            'client_secret': GoogleAuthConstants.desktopClientSecret,
           'code': code,
           'code_verifier': codeVerifier,
           'grant_type': 'authorization_code',
