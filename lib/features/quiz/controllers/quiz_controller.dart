@@ -2,13 +2,14 @@ import 'dart:developer' as dev;
 import 'dart:math';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/services/sound_service.dart';
-import '../../../core/storage/secure_storage_service.dart';
+import '../../auth/controllers/auth_controller.dart';
 import '../../words/controllers/word_list_controller.dart';
 import '../../words/models/word_model.dart';
 import '../models/daily_quiz_plan_model.dart';
 import '../models/quiz_history_model.dart';
 import '../models/quiz_question.dart';
 import '../services/daily_quiz_api_service.dart';
+import '../services/quiz_history_api_service.dart';
 
 class QuizState {
   final List<QuizQuestion> questions;
@@ -93,20 +94,29 @@ class QuizState {
 final quizControllerProvider =
     StateNotifierProvider<QuizController, QuizState>((ref) {
   final soundService = ref.watch(soundServiceProvider);
-  final storage = ref.watch(secureStorageServiceProvider);
   final apiService = ref.watch(dailyQuizApiServiceProvider);
+  final historyApiService = ref.watch(quizHistoryApiServiceProvider);
   final initialWords = ref.read(wordListControllerProvider).words;
 
   final controller = QuizController(
     initialWords,
     soundService: soundService,
-    storage: storage,
     apiService: apiService,
+    historyApiService: historyApiService,
   );
 
   // Update words pool gracefully without destroying the QuizController and its history state
   ref.listen<WordListState>(wordListControllerProvider, (prev, next) {
     controller.updateWordsPool(next.words);
+  });
+
+  // Listen to Auth State changes (when user logs in or out, reload data)
+  ref.listen<AuthState>(authControllerProvider, (prev, next) {
+    if (next.isAuthenticated) {
+      controller.loadInitialData();
+    } else if (next.status == AuthStatus.unauthenticated) {
+      controller.resetToSetup();
+    }
   });
 
   return controller;
@@ -115,19 +125,20 @@ final quizControllerProvider =
 class QuizController extends StateNotifier<QuizState> {
   List<WordModel> _allWords;
   final SoundService _soundService;
-  final SecureStorageService _storage;
   final DailyQuizApiService? _apiService;
+  final QuizHistoryApiService? _historyApiService;
   final Random _random = Random();
 
   QuizController(
     this._allWords, {
     SoundService? soundService,
-    SecureStorageService? storage,
     DailyQuizApiService? apiService,
+    QuizHistoryApiService? historyApiService,
   })  : _soundService = soundService ?? SoundService(),
-        _storage = storage ?? SecureStorageService(),
         // ignore: prefer_initializing_formals
         _apiService = apiService,
+        // ignore: prefer_initializing_formals
+        _historyApiService = historyApiService,
         super(QuizState.initial()) {
     loadInitialData();
   }
@@ -136,55 +147,41 @@ class QuizController extends StateNotifier<QuizState> {
     _allWords = List<WordModel>.from(words);
   }
 
+  /// Tüm veriler doğrudan API'den (Cloud) çekilir - Single Source of Truth
   Future<void> loadInitialData() async {
-    // 1. Instant local load for smooth UX
-    final history = await _storage.getQuizHistoryList();
     final todayStr = _formatTodayDate();
-    final localPlan = await _storage.getDailyQuizPlan();
-    final isDailyDone = localPlan?.isCompletedToday(todayStr) ?? false;
 
-    if (mounted) {
-      state = state.copyWith(
-        historyList: history,
-        dailyPlan: localPlan,
-        isDailyQuizCompletedToday: isDailyDone,
-      );
-    }
-
-    // 2. Cloud synchronization in background
-    if (_apiService != null) {
+    // 1. Test geçmişini API'den çek
+    List<QuizHistoryModel> history = [];
+    if (_historyApiService != null) {
       try {
-        final cloudPlan = await _apiService.getPlan();
-        if (cloudPlan != null) {
-          await _storage.saveDailyQuizPlan(cloudPlan);
-          if (!mounted) return;
-          final cloudDone = cloudPlan.isCompletedToday(todayStr);
-          state = state.copyWith(
-            dailyPlan: cloudPlan,
-            isDailyQuizCompletedToday: cloudDone,
-          );
-        } else if (localPlan != null) {
-          // If local plan exists but cloud has none, sync local to cloud
-          try {
-            final synced = await _apiService.createOrResetPlan(
-              listName: localPlan.listName,
-              dailyCount: localPlan.dailyCount,
-              isEnglishToTurkish: localPlan.isEnglishToTurkish,
-              shuffledWordIds: localPlan.shuffledWordIds,
-            );
-            if (synced != null && localPlan.currentPointer > 0) {
-              await _apiService.updateProgress(
-                newPointer: localPlan.currentPointer,
-                lastCompletedDate: localPlan.lastCompletedDate ?? '',
-                streakDays: localPlan.streakDays,
-              );
-            }
-          } catch (_) {}
-        }
+        history = await _historyApiService.getHistory();
       } catch (e) {
-        dev.log('QuizController.loadInitialData cloud sync error: $e');
+        dev.log('QuizController.loadInitialData history API error: $e');
       }
     }
+
+    // 2. Günlük Quiz planını API'den çek
+    DailyQuizPlanModel? cloudPlan;
+    bool isDailyDone = false;
+    if (_apiService != null) {
+      try {
+        cloudPlan = await _apiService.getPlan();
+        if (cloudPlan != null) {
+          isDailyDone = cloudPlan.isCompletedToday(todayStr);
+        }
+      } catch (e) {
+        dev.log('QuizController.loadInitialData plan API error: $e');
+      }
+    }
+
+    if (!mounted) return;
+    state = state.copyWith(
+      historyList: history,
+      dailyPlan: cloudPlan,
+      clearDailyPlan: cloudPlan == null,
+      isDailyQuizCompletedToday: isDailyDone,
+    );
   }
 
   Future<bool> startOrResetDailyPlan({
@@ -203,7 +200,27 @@ class QuizController extends StateNotifier<QuizState> {
     final shuffled = List<WordModel>.from(matchingWords)..shuffle(_random);
     final shuffledIds = shuffled.map((w) => w.id).toList();
 
-    var plan = DailyQuizPlanModel(
+    // Create directly on API
+    if (_apiService != null) {
+      try {
+        final cloudPlan = await _apiService.createOrResetPlan(
+          listName: listName,
+          dailyCount: dailyCount,
+          isEnglishToTurkish: englishToTurkish,
+          shuffledWordIds: shuffledIds,
+        );
+        if (cloudPlan != null) {
+          state = state.copyWith(dailyPlan: cloudPlan, isDailyQuizCompletedToday: false);
+          return true;
+        }
+      } catch (e) {
+        dev.log('QuizController.startOrResetDailyPlan error: $e');
+        return false;
+      }
+    }
+
+    // Fallback for standalone mock testing
+    final fallbackPlan = DailyQuizPlanModel(
       id: DateTime.now().millisecondsSinceEpoch.toString(),
       listName: listName,
       dailyCount: dailyCount,
@@ -214,26 +231,7 @@ class QuizController extends StateNotifier<QuizState> {
       isEnglishToTurkish: englishToTurkish,
       createdAt: DateTime.now(),
     );
-
-    // Try cloud creation first
-    if (_apiService != null) {
-      try {
-        final cloudPlan = await _apiService.createOrResetPlan(
-          listName: listName,
-          dailyCount: dailyCount,
-          isEnglishToTurkish: englishToTurkish,
-          shuffledWordIds: shuffledIds,
-        );
-        if (cloudPlan != null) {
-          plan = cloudPlan;
-        }
-      } catch (e) {
-        dev.log('QuizController.startOrResetDailyPlan cloud error: $e');
-      }
-    }
-
-    await _storage.saveDailyQuizPlan(plan);
-    state = state.copyWith(dailyPlan: plan, isDailyQuizCompletedToday: false);
+    state = state.copyWith(dailyPlan: fallbackPlan, isDailyQuizCompletedToday: false);
     return true;
   }
 
@@ -242,10 +240,9 @@ class QuizController extends StateNotifier<QuizState> {
       try {
         await _apiService.deletePlan();
       } catch (e) {
-        dev.log('QuizController.deleteDailyPlan cloud error: $e');
+        dev.log('QuizController.deleteDailyPlan error: $e');
       }
     }
-    await _storage.deleteDailyQuizPlan();
     state = state.copyWith(clearDailyPlan: true, isDailyQuizCompletedToday: false);
   }
 
@@ -453,7 +450,14 @@ class QuizController extends StateNotifier<QuizState> {
       results: state.results,
     );
 
-    await _storage.saveQuizHistory(historyEntry);
+    // Save history to Cloud API
+    if (_historyApiService != null) {
+      try {
+        await _historyApiService.saveHistory(historyEntry);
+      } catch (e) {
+        dev.log('QuizController._saveCompletedQuiz history API error: $e');
+      }
+    }
 
     DailyQuizPlanModel? updatedPlan = state.dailyPlan;
     if (state.isDailyQuiz && state.dailyPlan != null) {
@@ -462,16 +466,7 @@ class QuizController extends StateNotifier<QuizState> {
       final todayStr = _formatTodayDate();
       final newStreak = plan.streakDays + 1;
 
-      updatedPlan = plan.copyWith(
-        currentPointer: newPointer,
-        lastCompletedDate: todayStr,
-        streakDays: newStreak,
-      );
-
-      await _storage.saveDailyQuizPlan(updatedPlan);
-      await _storage.saveDailyQuizDate(todayStr);
-
-      // Async cloud sync
+      // Update progress on Cloud API
       if (_apiService != null) {
         try {
           final cloudPlan = await _apiService.updateProgress(
@@ -481,15 +476,41 @@ class QuizController extends StateNotifier<QuizState> {
           );
           if (cloudPlan != null) {
             updatedPlan = cloudPlan;
-            await _storage.saveDailyQuizPlan(updatedPlan);
+          } else {
+            updatedPlan = plan.copyWith(
+              currentPointer: newPointer,
+              lastCompletedDate: todayStr,
+              streakDays: newStreak,
+            );
           }
         } catch (e) {
-          dev.log('QuizController._saveCompletedQuiz cloud progress update error: $e');
+          dev.log('QuizController._saveCompletedQuiz plan progress API error: $e');
+          updatedPlan = plan.copyWith(
+            currentPointer: newPointer,
+            lastCompletedDate: todayStr,
+            streakDays: newStreak,
+          );
         }
+      } else {
+        updatedPlan = plan.copyWith(
+          currentPointer: newPointer,
+          lastCompletedDate: todayStr,
+          streakDays: newStreak,
+        );
       }
     }
 
-    final updatedHistory = await _storage.getQuizHistoryList();
+    // Refresh history from Cloud API
+    List<QuizHistoryModel> updatedHistory = [historyEntry, ...state.historyList];
+    if (_historyApiService != null) {
+      try {
+        final cloudHistory = await _historyApiService.getHistory();
+        if (cloudHistory.isNotEmpty) {
+          updatedHistory = cloudHistory;
+        }
+      } catch (_) {}
+    }
+
     if (!mounted) return;
     state = state.copyWith(
       historyList: updatedHistory,
@@ -524,19 +545,37 @@ class QuizController extends StateNotifier<QuizState> {
   }
 
   Future<void> clearAllHistory() async {
-    await _storage.clearQuizHistory();
+    if (_historyApiService != null) {
+      try {
+        await _historyApiService.clearHistory();
+      } catch (e) {
+        dev.log('QuizController.clearAllHistory error: $e');
+      }
+    }
     state = state.copyWith(historyList: []);
   }
 
   Future<void> clearGeneralHistory() async {
+    if (_historyApiService != null) {
+      try {
+        await _historyApiService.clearHistory(isDailyQuiz: false);
+      } catch (e) {
+        dev.log('QuizController.clearGeneralHistory error: $e');
+      }
+    }
     final remaining = state.historyList.where((h) => h.isDailyQuiz).toList();
-    await _storage.saveQuizHistoryList(remaining);
     state = state.copyWith(historyList: remaining);
   }
 
   Future<void> clearDailyHistory() async {
+    if (_historyApiService != null) {
+      try {
+        await _historyApiService.clearHistory(isDailyQuiz: true);
+      } catch (e) {
+        dev.log('QuizController.clearDailyHistory error: $e');
+      }
+    }
     final remaining = state.historyList.where((h) => !h.isDailyQuiz).toList();
-    await _storage.saveQuizHistoryList(remaining);
     state = state.copyWith(historyList: remaining);
   }
 

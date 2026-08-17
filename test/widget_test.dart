@@ -4,7 +4,6 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:wordstation_flutter/core/services/sound_service.dart';
-import 'package:wordstation_flutter/core/storage/secure_storage_service.dart';
 import 'package:wordstation_flutter/features/auth/models/login_request.dart';
 import 'package:wordstation_flutter/features/auth/models/token_response.dart';
 import 'package:wordstation_flutter/features/auth/models/user_model.dart';
@@ -218,11 +217,9 @@ void main() {
       ];
 
       final soundService = SoundService(enableAudio: false);
-      final storage = SecureStorageService();
       final controller = QuizController(
         sampleWords,
         soundService: soundService,
-        storage: storage,
       );
       controller.generateQuiz(questionCount: 4, englishToTurkish: true);
 
@@ -250,11 +247,9 @@ void main() {
       ];
 
       final soundService = SoundService(enableAudio: false);
-      final storage = SecureStorageService();
       final controller = QuizController(
         sampleWords,
         soundService: soundService,
-        storage: storage,
       );
       controller.generateDailyQuiz(questionCount: 3);
 
@@ -270,11 +265,9 @@ void main() {
       ];
 
       final soundService = SoundService(enableAudio: false);
-      final storage = SecureStorageService();
       final controller = QuizController(
         sampleWords,
         soundService: soundService,
-        storage: storage,
       );
 
       final generalItem = QuizHistoryModel(
@@ -323,8 +316,14 @@ void main() {
 
   testWidgets('QuizHistoryPage renders compact rows and handles empty state', (WidgetTester tester) async {
     await tester.pumpWidget(
-      const ProviderScope(
-        child: MaterialApp(
+      ProviderScope(
+        overrides: [
+          quizControllerProvider.overrideWith((ref) => QuizController(
+                const [],
+                soundService: SoundService(enableAudio: false),
+              )),
+        ],
+        child: const MaterialApp(
           home: QuizHistoryPage(
             isDailyQuiz: true,
             title: 'Günlük Quiz Sonuçları',

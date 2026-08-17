@@ -2,8 +2,6 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
-import '../../features/quiz/models/daily_quiz_plan_model.dart';
-import '../../features/quiz/models/quiz_history_model.dart';
 
 final secureStorageServiceProvider = Provider<SecureStorageService>((ref) {
   return SecureStorageService();
@@ -28,6 +26,8 @@ class SecureStorageService {
   static const String _keyUserId = 'user_id';
   static const String _keyUserEmail = 'user_email';
   static const String _keyThemeMode = 'theme_mode';
+
+  // Legacy keys for cleanup
   static const String _keyQuizHistory = 'quiz_history';
   static const String _keyDailyQuizDate = 'daily_quiz_date';
   static const String _keyDailyQuizPlan = 'daily_quiz_plan';
@@ -169,98 +169,14 @@ class SecureStorageService {
     return ThemeMode.light;
   }
 
-  // Quiz History
-  Future<void> saveQuizHistory(QuizHistoryModel history) async {
-    try {
-      final currentList = await getQuizHistoryList();
-      final updatedList = [history, ...currentList];
-      // Keep last 50 attempts
-      if (updatedList.length > 50) {
-        updatedList.removeRange(50, updatedList.length);
-      }
-      final jsonStr = jsonEncode(updatedList.map((h) => h.toJson()).toList());
-      await _storage.write(key: _keyQuizHistory, value: jsonStr);
-    } catch (_) {}
-  }
-
-  Future<List<QuizHistoryModel>> getQuizHistoryList() async {
-    try {
-      final jsonStr = await _storage.read(key: _keyQuizHistory);
-      if (jsonStr == null || jsonStr.isEmpty) return [];
-      final decoded = jsonDecode(jsonStr);
-      if (decoded is List) {
-        final list = <QuizHistoryModel>[];
-        for (final item in decoded) {
-          try {
-            if (item is Map) {
-              list.add(QuizHistoryModel.fromJson(
-                  Map<String, dynamic>.from(item)));
-            }
-          } catch (e) {
-            debugPrint('Failed to parse a quiz history item: $e');
-          }
-        }
-        return list;
-      }
-    } catch (e) {
-      debugPrint('getQuizHistoryList error: $e');
-    }
-    return [];
-  }
-
-  Future<void> saveQuizHistoryList(List<QuizHistoryModel> list) async {
-    try {
-      final jsonStr = jsonEncode(list.map((h) => h.toJson()).toList());
-      await _storage.write(key: _keyQuizHistory, value: jsonStr);
-    } catch (_) {}
-  }
-
-  Future<void> clearQuizHistory() async {
-    await _storage.delete(key: _keyQuizHistory);
-  }
-
-  // Daily Quiz Tracking
-  Future<String?> getDailyQuizDate() async {
-    return await _storage.read(key: _keyDailyQuizDate);
-  }
-
-  Future<void> saveDailyQuizDate(String dateStr) async {
-    await _storage.write(key: _keyDailyQuizDate, value: dateStr);
-  }
-
-  // Daily Quiz Plan (Zero-Repeat Engine)
-  Future<void> saveDailyQuizPlan(DailyQuizPlanModel plan) async {
-    try {
-      final jsonStr = jsonEncode(plan.toJson());
-      await _storage.write(key: _keyDailyQuizPlan, value: jsonStr);
-    } catch (e) {
-      debugPrint('saveDailyQuizPlan error: $e');
-    }
-  }
-
-  Future<DailyQuizPlanModel?> getDailyQuizPlan() async {
-    try {
-      final jsonStr = await _storage.read(key: _keyDailyQuizPlan);
-      if (jsonStr == null || jsonStr.isEmpty) return null;
-      final map = jsonDecode(jsonStr);
-      if (map is Map) {
-        return DailyQuizPlanModel.fromJson(Map<String, dynamic>.from(map));
-      }
-    } catch (e) {
-      debugPrint('getDailyQuizPlan error: $e');
-    }
-    return null;
-  }
-
-  Future<void> deleteDailyQuizPlan() async {
-    await _storage.delete(key: _keyDailyQuizPlan);
-  }
-
-  // Clear only auth tokens on Logout (PRESERVES quiz history, daily plan, and theme mode)
+  // Clear all tokens and leftover legacy cache on Logout
   Future<void> clearAll() async {
     await _storage.delete(key: _keyAccessToken);
     await _storage.delete(key: _keyRefreshToken);
     await _storage.delete(key: _keyUserId);
     await _storage.delete(key: _keyUserEmail);
+    await _storage.delete(key: _keyQuizHistory);
+    await _storage.delete(key: _keyDailyQuizDate);
+    await _storage.delete(key: _keyDailyQuizPlan);
   }
 }

@@ -5,6 +5,7 @@ import '../../../core/widgets/custom_button.dart';
 import '../../../core/widgets/custom_text_field.dart';
 import '../../../core/widgets/loading_overlay.dart';
 import '../../navigation/main_navigation_page.dart';
+import '../../quiz/controllers/quiz_controller.dart';
 import '../../words/controllers/word_list_controller.dart';
 import '../controllers/auth_controller.dart';
 import 'register_page.dart';
@@ -39,6 +40,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
 
     if (success && mounted) {
       ref.read(wordListControllerProvider.notifier).loadInitialData();
+      ref.read(quizControllerProvider.notifier).loadInitialData();
       Navigator.of(context).pushReplacement(
         MaterialPageRoute(builder: (_) => const MainNavigationPage()),
       );
@@ -52,6 +54,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
 
     if (success && mounted) {
       ref.read(wordListControllerProvider.notifier).loadInitialData();
+      ref.read(quizControllerProvider.notifier).loadInitialData();
       Navigator.of(context).pushReplacement(
         MaterialPageRoute(builder: (_) => const MainNavigationPage()),
       );

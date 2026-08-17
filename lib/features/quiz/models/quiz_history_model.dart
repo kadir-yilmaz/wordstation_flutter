@@ -1,3 +1,4 @@
+import 'dart:convert';
 import '../../words/models/word_model.dart';
 
 class QuizQuestionResult {
@@ -23,15 +24,24 @@ class QuizQuestionResult {
         'isCorrect': isCorrect,
       };
 
-  factory QuizQuestionResult.fromJson(Map<String, dynamic> json) =>
-      QuizQuestionResult(
-        word: WordModel.fromJson(
-            Map<String, dynamic>.from(json['word'] as Map)),
-        questionText: json['questionText'] as String? ?? '',
-        correctAnswer: json['correctAnswer'] as String? ?? '',
-        selectedAnswer: json['selectedAnswer'] as String? ?? '',
-        isCorrect: json['isCorrect'] as bool? ?? false,
-      );
+  factory QuizQuestionResult.fromJson(Map<String, dynamic> json) {
+    final rawWord = json['word'] ?? json['Word'];
+    final wordModel = rawWord != null
+        ? WordModel.fromJson(Map<String, dynamic>.from(rawWord as Map))
+        : WordModel(
+            id: 0,
+            en: json['questionText']?.toString() ?? '',
+            tr: json['correctAnswer']?.toString() ?? '',
+          );
+
+    return QuizQuestionResult(
+      word: wordModel,
+      questionText: (json['questionText'] ?? json['QuestionText'] ?? '').toString(),
+      correctAnswer: (json['correctAnswer'] ?? json['CorrectAnswer'] ?? '').toString(),
+      selectedAnswer: (json['selectedAnswer'] ?? json['SelectedAnswer'] ?? '').toString(),
+      isCorrect: json['isCorrect'] ?? json['IsCorrect'] ?? false,
+    );
+  }
 }
 
 class QuizHistoryModel {
@@ -75,22 +85,54 @@ class QuizHistoryModel {
         'results': results.map((r) => r.toJson()).toList(),
       };
 
-  factory QuizHistoryModel.fromJson(Map<String, dynamic> json) =>
-      QuizHistoryModel(
-        id: json['id'] as String? ?? '',
-        date: json['date'] != null
-            ? DateTime.tryParse(json['date'] as String) ?? DateTime.now()
-            : DateTime.now(),
-        title: json['title'] as String? ?? 'Genel Test',
-        score: json['score'] as int? ?? 0,
-        maxScore: json['maxScore'] as int? ?? 0,
-        totalQuestions: json['totalQuestions'] as int? ?? 0,
-        correctCount: json['correctCount'] as int? ?? 0,
-        wrongCount: json['wrongCount'] as int? ?? 0,
-        isDailyQuiz: json['isDailyQuiz'] as bool? ?? false,
-        results: (json['results'] as List<dynamic>? ?? [])
-            .map((r) => QuizQuestionResult.fromJson(
-                Map<String, dynamic>.from(r as Map)))
-            .toList(),
-      );
+  factory QuizHistoryModel.fromJson(Map<String, dynamic> json) {
+    final rawId = json['id'] ?? json['Id'] ?? '';
+    final rawDate = json['date'] ?? json['Date'];
+    DateTime parsedDate;
+    if (rawDate is String) {
+      parsedDate = DateTime.tryParse(rawDate) ?? DateTime.now();
+    } else {
+      parsedDate = DateTime.now();
+    }
+
+    final rawResults = json['results'] ?? json['Results'];
+    List<QuizQuestionResult> parsedResults = [];
+
+    if (rawResults is List) {
+      parsedResults = rawResults
+          .map((r) => QuizQuestionResult.fromJson(Map<String, dynamic>.from(r as Map)))
+          .toList();
+    } else if (json['resultsJson'] is String && (json['resultsJson'] as String).isNotEmpty) {
+      try {
+        final decoded = jsonDecode(json['resultsJson'] as String);
+        if (decoded is List) {
+          parsedResults = decoded
+              .map((r) => QuizQuestionResult.fromJson(Map<String, dynamic>.from(r as Map)))
+              .toList();
+        }
+      } catch (_) {}
+    } else if (json['ResultsJson'] is String && (json['ResultsJson'] as String).isNotEmpty) {
+      try {
+        final decoded = jsonDecode(json['ResultsJson'] as String);
+        if (decoded is List) {
+          parsedResults = decoded
+              .map((r) => QuizQuestionResult.fromJson(Map<String, dynamic>.from(r as Map)))
+              .toList();
+        }
+      } catch (_) {}
+    }
+
+    return QuizHistoryModel(
+      id: rawId.toString(),
+      date: parsedDate,
+      title: (json['title'] ?? json['Title'] ?? 'Genel Test').toString(),
+      score: (json['score'] ?? json['Score'] as num?)?.toInt() ?? 0,
+      maxScore: (json['maxScore'] ?? json['MaxScore'] as num?)?.toInt() ?? 0,
+      totalQuestions: (json['totalQuestions'] ?? json['TotalQuestions'] as num?)?.toInt() ?? 0,
+      correctCount: (json['correctCount'] ?? json['CorrectCount'] as num?)?.toInt() ?? 0,
+      wrongCount: (json['wrongCount'] ?? json['WrongCount'] as num?)?.toInt() ?? 0,
+      isDailyQuiz: (json['isDailyQuiz'] ?? json['IsDailyQuiz']) == true,
+      results: parsedResults,
+    );
+  }
 }

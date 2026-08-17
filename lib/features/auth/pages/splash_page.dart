@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../navigation/main_navigation_page.dart';
+import '../../quiz/controllers/quiz_controller.dart';
 import '../../words/controllers/word_list_controller.dart';
 import '../controllers/auth_controller.dart';
 import 'login_page.dart';
@@ -14,7 +15,7 @@ class SplashPage extends ConsumerStatefulWidget {
 }
 
 class _SplashPageState extends ConsumerState<SplashPage>
-    with SingleTickerProviderStateMixin {
+  with SingleTickerProviderStateMixin {
   late AnimationController _animController;
   late Animation<double> _scaleAnimation;
   late Animation<double> _fadeAnimation;
@@ -63,6 +64,7 @@ class _SplashPageState extends ConsumerState<SplashPage>
     if (state.isAuthenticated) {
       _hasNavigated = true;
       ref.read(wordListControllerProvider.notifier).loadInitialData();
+      ref.read(quizControllerProvider.notifier).loadInitialData();
       Navigator.of(context).pushReplacement(
         PageRouteBuilder(
           pageBuilder: (_, _, _) => const MainNavigationPage(),

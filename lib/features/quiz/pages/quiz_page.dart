@@ -37,6 +37,11 @@ class _QuizPageState extends ConsumerState<QuizPage> {
   void initState() {
     super.initState();
     _initTts();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        ref.read(quizControllerProvider.notifier).loadInitialData();
+      }
+    });
   }
 
   Future<void> _initTts() async {
