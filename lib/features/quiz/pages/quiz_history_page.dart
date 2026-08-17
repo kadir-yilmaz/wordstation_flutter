@@ -142,7 +142,7 @@ class QuizHistoryPage extends ConsumerWidget {
     return InkWell(
       onTap: () {
         HapticFeedback.selectionClick();
-        _showHistoryDetailModal(context, entry, isDark, allWords);
+        showQuizHistoryDetailModal(context, entry, isDark, allWords);
       },
       borderRadius: BorderRadius.circular(14),
       child: Container(
@@ -311,13 +311,14 @@ class QuizHistoryPage extends ConsumerWidget {
       }
     }
   }
+}
 
-  void _showHistoryDetailModal(
-    BuildContext context,
-    QuizHistoryModel entry,
-    bool isDark,
-    List<WordModel> allWords,
-  ) {
+void showQuizHistoryDetailModal(
+  BuildContext context,
+  QuizHistoryModel entry,
+  bool isDark,
+  List<WordModel> allWords,
+) {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -531,4 +532,3 @@ class QuizHistoryPage extends ConsumerWidget {
       ),
     );
   }
-}

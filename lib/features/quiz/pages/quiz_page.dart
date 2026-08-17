@@ -10,7 +10,6 @@ import '../../../core/widgets/word_detail_bottom_sheet.dart';
 import '../../words/controllers/word_list_controller.dart';
 import '../../words/models/word_model.dart';
 import '../controllers/quiz_controller.dart';
-import '../models/daily_quiz_plan_model.dart';
 import '../models/quiz_history_model.dart';
 import 'quiz_history_page.dart';
 
@@ -1117,7 +1116,7 @@ class _QuizPageState extends ConsumerState<QuizPage> {
                         ),
                       ],
                     ),
-                    const SizedBox(height: 10),
+                    const SizedBox(height: 12),
                     ClipRRect(
                       borderRadius: BorderRadius.circular(8),
                       child: LinearProgressIndicator(
@@ -1126,50 +1125,6 @@ class _QuizPageState extends ConsumerState<QuizPage> {
                         backgroundColor: isDark ? const Color(0xFF2C2C2E) : const Color(0xFFE5E5EA),
                         valueColor: const AlwaysStoppedAnimation<Color>(AppColors.turquoise),
                       ),
-                    ),
-                    const SizedBox(height: 12),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text(
-                          '${plan.currentPointer} / ${plan.totalWords} Kelime Çözüldü',
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                        Text(
-                          '${plan.remainingWords} Kelime Kaldı',
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text(
-                          '${plan.currentPointer} / ${plan.totalWords} Kelime Çözüldü',
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                        Text(
-                          '${plan.remainingWords} Kelime Kaldı',
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                      ],
                     ),
                   ],
                 ),
@@ -1223,86 +1178,93 @@ class _QuizPageState extends ConsumerState<QuizPage> {
                 ),
               ),
             ] else if (isCompletedToday) ...[
-              // Completed Today Banner
-              Container(
-                padding: const EdgeInsets.all(22),
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    colors: [Color(0xFF34C759), Color(0xFF30D158)],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
+              // Completed Today Banner (Tıklanabilir -> Bugünün Sonuçlarını Açar)
+              Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  onTap: () {
+                    HapticFeedback.selectionClick();
+                    final todayEntry = dailyHistory.isNotEmpty ? dailyHistory.first : null;
+                    if (todayEntry != null) {
+                      showQuizHistoryDetailModal(context, todayEntry, isDark, wordListState.words);
+                    } else {
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => const QuizHistoryPage(
+                            isDailyQuiz: true,
+                            title: 'Günlük Quiz Sonuçları',
+                          ),
+                        ),
+                      );
+                    }
+                  },
                   borderRadius: BorderRadius.circular(22),
-                  boxShadow: [
-                    BoxShadow(
-                      color: const Color(0xFF34C759).withValues(alpha: 0.35),
-                      blurRadius: 16,
-                      offset: const Offset(0, 6),
-                    ),
-                  ],
-                ),
-                child: Column(
-                  children: [
-                    const Icon(Icons.check_circle_rounded, size: 48, color: Colors.white),
-                    const SizedBox(height: 10),
-                    Text(
-                      'Bugünkü Test (Gün ${plan.completedDays > 0 ? plan.completedDays : 1}) Tamamlandı!',
-                      style: const TextStyle(
-                        fontSize: 19,
-                        fontWeight: FontWeight.w800,
-                        color: Colors.white,
+                  child: Container(
+                    padding: const EdgeInsets.all(22),
+                    decoration: BoxDecoration(
+                      gradient: const LinearGradient(
+                        colors: [Color(0xFF34C759), Color(0xFF30D158)],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
                       ),
+                      borderRadius: BorderRadius.circular(22),
+                      boxShadow: [
+                        BoxShadow(
+                          color: const Color(0xFF34C759).withValues(alpha: 0.35),
+                          blurRadius: 16,
+                          offset: const Offset(0, 6),
+                        ),
+                      ],
                     ),
-                    const SizedBox(height: 6),
-                    Text(
-                      'Günün ${plan.dailyCount} kelimesini başarıyla tamamladınız. Yarın Gün ${plan.currentDay} testi açılacaktır.',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(fontSize: 13, color: Colors.white.withValues(alpha: 0.95)),
+                    child: Column(
+                      children: [
+                        const Icon(Icons.check_circle_rounded, size: 48, color: Colors.white),
+                        const SizedBox(height: 10),
+                        Text(
+                          'Bugünkü Test (Gün ${plan.completedDays > 0 ? plan.completedDays : 1}) Tamamlandı!',
+                          style: const TextStyle(
+                            fontSize: 19,
+                            fontWeight: FontWeight.w800,
+                            color: Colors.white,
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          'Günün ${plan.dailyCount} kelimesini başarıyla tamamladınız. Yarın Gün ${plan.currentDay} testi açılacaktır.',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(fontSize: 13, color: Colors.white.withValues(alpha: 0.95)),
+                        ),
+                        const SizedBox(height: 14),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withValues(alpha: 0.22),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: const Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.assessment_rounded, size: 16, color: Colors.white),
+                              SizedBox(width: 6),
+                              Text(
+                                'Bugünün Sonuçlarını Gör',
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w700,
+                                  color: Colors.white,
+                                ),
+                              ),
+                              SizedBox(width: 4),
+                              Icon(Icons.arrow_forward_ios_rounded, size: 12, color: Colors.white),
+                            ],
+                          ),
+                        ),
+                      ],
                     ),
-                  ],
+                  ),
                 ),
               ),
-              const SizedBox(height: 20),
-
-              // Günün Kelimeleri Bölümü
-              () {
-                final todayWords = _getTodayWords(plan, wordListState.words);
-                if (todayWords.isEmpty) return const SizedBox.shrink();
-
-                return Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Text(
-                            'Günün Kelimeleri (${todayWords.length})',
-                            style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w800,
-                              color: isDark ? AppColors.darkTextPrimary : AppColors.lightTextPrimary,
-                            ),
-                          ),
-                          Text(
-                            'Gün ${plan.completedDays > 0 ? plan.completedDays : 1}',
-                            style: const TextStyle(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w700,
-                              color: AppColors.turquoise,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                    ...todayWords.map((word) => _buildTodayWordTile(context, word, isDark)),
-                  ],
-                );
-              }(),
-
-              const SizedBox(height: 12),
+              const SizedBox(height: 16),
               Center(
                 child: TextButton.icon(
                   icon: const Icon(Icons.refresh_rounded, size: 16, color: AppColors.error),
@@ -1421,91 +1383,6 @@ class _QuizPageState extends ConsumerState<QuizPage> {
 
           const SizedBox(height: 28),
         ],
-      ),
-    );
-  }
-
-  List<WordModel> _getTodayWords(DailyQuizPlanModel plan, List<WordModel> allWords) {
-    if (plan.currentPointer <= 0) return [];
-    final start = (plan.currentPointer - plan.dailyCount).clamp(0, plan.totalWords);
-    final end = plan.currentPointer.clamp(0, plan.totalWords);
-    if (start >= end) return [];
-    final batchIds = plan.shuffledWordIds.sublist(start, end);
-    final words = <WordModel>[];
-    for (final id in batchIds) {
-      for (final w in allWords) {
-        if (w.id == id) {
-          words.add(w);
-          break;
-        }
-      }
-    }
-    return words;
-  }
-
-  Widget _buildTodayWordTile(BuildContext context, WordModel word, bool isDark) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      decoration: BoxDecoration(
-        color: isDark ? AppColors.darkSurface : Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: isDark ? AppColors.darkBorder : AppColors.lightBorder,
-          width: 1.1,
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.03),
-            blurRadius: 6,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          borderRadius: BorderRadius.circular(16),
-          onTap: () {
-            HapticFeedback.selectionClick();
-            showWordDetailModal(context, word: word);
-          },
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        word.en,
-                        style: TextStyle(
-                          fontSize: 15.5,
-                          fontWeight: FontWeight.w700,
-                          color: isDark ? AppColors.darkTextPrimary : AppColors.lightTextPrimary,
-                        ),
-                      ),
-                      const SizedBox(height: 3),
-                      Text(
-                        word.tr,
-                        style: TextStyle(
-                          fontSize: 13.5,
-                          fontWeight: FontWeight.w500,
-                          color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                IconButton(
-                  icon: const Icon(Icons.volume_up_rounded, size: 22, color: AppColors.turquoise),
-                  onPressed: () => _speakWord(word.en),
-                  tooltip: 'Telaffuz Dinle',
-                ),
-              ],
-            ),
-          ),
-        ),
       ),
     );
   }

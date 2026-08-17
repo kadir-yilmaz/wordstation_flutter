@@ -200,6 +200,16 @@ class QuizController extends StateNotifier<QuizState> {
     final shuffled = List<WordModel>.from(matchingWords)..shuffle(_random);
     final shuffledIds = shuffled.map((w) => w.id).toList();
 
+    // Clear old daily quiz history on reset/new plan
+    if (_historyApiService != null) {
+      try {
+        await _historyApiService.clearHistory(isDailyQuiz: true);
+      } catch (e) {
+        dev.log('QuizController.startOrResetDailyPlan clear history error: $e');
+      }
+    }
+    final remainingHistory = state.historyList.where((h) => !h.isDailyQuiz).toList();
+
     // Create directly on API
     if (_apiService != null) {
       try {
@@ -210,7 +220,11 @@ class QuizController extends StateNotifier<QuizState> {
           shuffledWordIds: shuffledIds,
         );
         if (cloudPlan != null) {
-          state = state.copyWith(dailyPlan: cloudPlan, isDailyQuizCompletedToday: false);
+          state = state.copyWith(
+            dailyPlan: cloudPlan,
+            isDailyQuizCompletedToday: false,
+            historyList: remainingHistory,
+          );
           return true;
         }
       } catch (e) {
@@ -231,7 +245,11 @@ class QuizController extends StateNotifier<QuizState> {
       isEnglishToTurkish: englishToTurkish,
       createdAt: DateTime.now(),
     );
-    state = state.copyWith(dailyPlan: fallbackPlan, isDailyQuizCompletedToday: false);
+    state = state.copyWith(
+      dailyPlan: fallbackPlan,
+      isDailyQuizCompletedToday: false,
+      historyList: remainingHistory,
+    );
     return true;
   }
 
@@ -243,7 +261,19 @@ class QuizController extends StateNotifier<QuizState> {
         dev.log('QuizController.deleteDailyPlan error: $e');
       }
     }
-    state = state.copyWith(clearDailyPlan: true, isDailyQuizCompletedToday: false);
+    if (_historyApiService != null) {
+      try {
+        await _historyApiService.clearHistory(isDailyQuiz: true);
+      } catch (e) {
+        dev.log('QuizController.deleteDailyPlan clear history error: $e');
+      }
+    }
+    final remainingHistory = state.historyList.where((h) => !h.isDailyQuiz).toList();
+    state = state.copyWith(
+      clearDailyPlan: true,
+      isDailyQuizCompletedToday: false,
+      historyList: remainingHistory,
+    );
   }
 
   void startDailyQuizForToday() {
