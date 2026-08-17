@@ -1,5 +1,8 @@
+import 'dart:convert';
 import 'dart:developer';
 import 'dart:io' show Platform, HttpServer, InternetAddress, ContentType;
+import 'dart:math' show Random;
+import 'package:crypto/crypto.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/services.dart';
@@ -35,6 +38,19 @@ class AuthService {
               clientId: GoogleAuthConstants.clientId,
               serverClientId: GoogleAuthConstants.serverClientId,
             );
+
+  // PKCE (Proof Key for Code Exchange - RFC 7636) Helper Methods
+  static String _generateCodeVerifier() {
+    final random = Random.secure();
+    final values = List<int>.generate(32, (i) => random.nextInt(256));
+    return base64UrlEncode(values).replaceAll('=', '');
+  }
+
+  static String _generateCodeChallenge(String verifier) {
+    final bytes = utf8.encode(verifier);
+    final digest = sha256.convert(bytes);
+    return base64UrlEncode(digest.bytes).replaceAll('=', '');
+  }
 
   // Email/Password Login
   Future<UserModel> loginWithEmail(String email, String password) async {
@@ -386,11 +402,16 @@ class AuthService {
       final redirectUri = 'http://localhost:$port';
       final clientId = GoogleAuthConstants.desktopClientId;
 
+      final codeVerifier = _generateCodeVerifier();
+      final codeChallenge = _generateCodeChallenge(codeVerifier);
+
       final authUrl = Uri.https('accounts.google.com', '/o/oauth2/v2/auth', {
         'client_id': clientId,
         'redirect_uri': redirectUri,
         'response_type': 'code',
         'scope': 'openid email profile',
+        'code_challenge': codeChallenge,
+        'code_challenge_method': 'S256',
         'access_type': 'offline',
       });
 
@@ -447,9 +468,9 @@ class AuthService {
             'Google ile giriş iptal edildi veya hata oluştu ($error).');
       }
 
-      log('🟢 [AuthService._loginWithGoogleDesktop] Code received. Exchanging for tokens...');
+      log('🟢 [AuthService._loginWithGoogleDesktop] Code received. Exchanging for tokens via PKCE...');
 
-      // Exchange authorization code for tokens with Google
+      // Exchange authorization code for tokens with Google using PKCE code_verifier (Zero secret!)
       final tokenDio = Dio();
       final tokenResponse = await tokenDio.post(
         'https://oauth2.googleapis.com/token',
@@ -457,6 +478,7 @@ class AuthService {
         data: {
           'client_id': clientId,
           'code': code,
+          'code_verifier': codeVerifier,
           'grant_type': 'authorization_code',
           'redirect_uri': redirectUri,
         },
@@ -520,6 +542,15 @@ class AuthService {
       } else {
         throw Exception('Google girişi sonrası geçersiz sunucu yanıtı.');
       }
+    } on DioException catch (e) {
+      log('🔴 [AuthService._loginWithGoogleDesktop] DioException: ${e.message}, status=${e.response?.statusCode}, data=${e.response?.data}');
+      if (e.response?.data != null) {
+        final data = e.response!.data;
+        if (data is Map && data['error_description'] != null) {
+          throw Exception('Google Giriş Hatası: ${data['error_description']}');
+        }
+      }
+      throw Exception(_extractErrorMessage(e));
     } catch (e) {
       log('🔴 [AuthService._loginWithGoogleDesktop] Error: $e');
       if (e.toString().startsWith('Exception: ')) {
