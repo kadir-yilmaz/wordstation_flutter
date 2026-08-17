@@ -52,7 +52,7 @@ class QuizHistoryPage extends ConsumerWidget {
         ),
         centerTitle: true,
         actions: [
-          if (historyList.isNotEmpty)
+          if (historyList.isNotEmpty && !isDailyQuiz)
             TextButton(
               onPressed: () => _confirmClearHistory(context, quizNotifier),
               child: const Text(
