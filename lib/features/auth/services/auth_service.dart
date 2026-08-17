@@ -1,13 +1,15 @@
 import 'dart:developer';
-import 'dart:io' show Platform;
+import 'dart:io' show Platform, HttpServer, InternetAddress, ContentType;
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_sign_in/google_sign_in.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../../../core/constants/api_constants.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/storage/secure_storage_service.dart';
+import '../../../core/utils/jwt_decoder.dart';
 import '../models/login_request.dart';
 import '../models/token_response.dart';
 import '../models/user_model.dart';
@@ -64,7 +66,7 @@ class AuthService {
           email: userEmail,
         );
 
-        log('🟢 [AuthService.loginWithEmail] Tokens saved successfully for userId: $userId');
+        log('🟢 [AuthService.loginWithEmail] Login completed successfully for user: $userEmail');
 
         return UserModel(
           id: userId,
@@ -74,12 +76,14 @@ class AuthService {
         throw Exception('Geçersiz sunucu yanıtı.');
       }
     } on DioException catch (e) {
-      log('🔴 [AuthService.loginWithEmail] DioException: status=${e.response?.statusCode}, data=${e.response?.data}');
-      final message = _extractErrorMessage(e);
-      throw Exception(message);
-    } catch (e, stack) {
-      log('🔴 [AuthService.loginWithEmail] Exception: $e\n$stack');
-      throw Exception(e.toString().replaceAll('Exception: ', ''));
+      log('🔴 [AuthService.loginWithEmail] DioException: ${e.message}, status=${e.response?.statusCode}, data=${e.response?.data}');
+      throw Exception(_extractErrorMessage(e));
+    } catch (e) {
+      log('🔴 [AuthService.loginWithEmail] Unexpected error: $e');
+      if (e.toString().startsWith('Exception: ')) {
+        rethrow;
+      }
+      throw Exception('Giriş yapılırken beklenmeyen bir hata oluştu.');
     }
   }
 
@@ -136,6 +140,12 @@ class AuthService {
 
   // Google OAuth 2.0 Login (Exact Swift GoogleLoginRequest matching)
   Future<UserModel> loginWithGoogle() async {
+    // Windows ve Linux'ta resmi google_sign_in eklentisinin yerel C++ uygulaması bulunmadığından,
+    // Google'ın resmi Masaüstü standardı olan Loopback OAuth 2.0 akışı kullanılır.
+    if (!kIsWeb && (Platform.isWindows || Platform.isLinux)) {
+      return _loginWithGoogleDesktop();
+    }
+
     try {
       final platformName = kIsWeb ? 'web' : Platform.operatingSystem;
       log('🔵 [AuthService.loginWithGoogle] Starting Google Sign-In on $platformName...');
@@ -364,5 +374,160 @@ class AuthService {
     }
 
     return 'Bir hata oluştu (${e.response?.statusCode ?? "Bilinmeyen"}). Lütfen tekrar deneyin.';
+  }
+
+  // Windows & Linux Desktop Loopback OAuth 2.0 Flow (RFC 8252)
+  Future<UserModel> _loginWithGoogleDesktop() async {
+    log('🔵 [AuthService._loginWithGoogleDesktop] Starting Loopback OAuth2 flow for Desktop...');
+    HttpServer? server;
+    try {
+      server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      final port = server.port;
+      final redirectUri = 'http://localhost:$port';
+      final clientId = GoogleAuthConstants.desktopClientId;
+
+      final authUrl = Uri.https('accounts.google.com', '/o/oauth2/v2/auth', {
+        'client_id': clientId,
+        'redirect_uri': redirectUri,
+        'response_type': 'code',
+        'scope': 'openid email profile',
+        'access_type': 'offline',
+      });
+
+      log('🔵 [AuthService._loginWithGoogleDesktop] Opening browser with URL: $authUrl');
+      final launched =
+          await launchUrl(authUrl, mode: LaunchMode.externalApplication);
+      if (!launched) {
+        throw Exception('Varsayılan web tarayıcısı açılamadı.');
+      }
+
+      // Wait for the redirect callback
+      final request = await server.first.timeout(
+        const Duration(minutes: 3),
+        onTimeout: () => throw Exception(
+            'Google ile giriş zaman aşımına uğradı. Lütfen tekrar deneyin.'),
+      );
+
+      final queryParams = request.uri.queryParameters;
+      final code = queryParams['code'];
+      final error = queryParams['error'];
+
+      // Send friendly response to the browser window
+      request.response
+        ..statusCode = 200
+        ..headers.contentType = ContentType.html
+        ..write('''
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>WordStation - Giriş Başarılı</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #121214; color: #FFFFFF; text-align: center; padding: 60px 20px; }
+    .card { max-width: 420px; margin: 0 auto; background: #1E1E24; border-radius: 20px; padding: 36px 28px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
+    h1 { color: #34C759; font-size: 24px; margin-bottom: 12px; }
+    p { color: #8E8E93; font-size: 15px; line-height: 1.5; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>✓ Giriş Başarılı!</h1>
+    <p>WordStation masaüstü uygulamasına dönebilirsiniz. Bu sekmeyi kapatabilirsiniz.</p>
+  </div>
+  <script>
+    setTimeout(function() { window.close(); }, 2000);
+  </script>
+</body>
+</html>
+''');
+      await request.response.close();
+
+      if (error != null || code == null) {
+        throw Exception(
+            'Google ile giriş iptal edildi veya hata oluştu ($error).');
+      }
+
+      log('🟢 [AuthService._loginWithGoogleDesktop] Code received. Exchanging for tokens...');
+
+      // Exchange authorization code for tokens with Google
+      final tokenDio = Dio();
+      final tokenResponse = await tokenDio.post(
+        'https://oauth2.googleapis.com/token',
+        options: Options(contentType: Headers.formUrlEncodedContentType),
+        data: {
+          'client_id': clientId,
+          'code': code,
+          'grant_type': 'authorization_code',
+          'redirect_uri': redirectUri,
+        },
+      );
+
+      final tokenData = tokenResponse.data is Map<String, dynamic>
+          ? tokenResponse.data
+          : Map<String, dynamic>.from(tokenResponse.data as Map);
+
+      final idToken = tokenData['id_token'] as String? ?? '';
+      final accessToken = tokenData['access_token'] as String? ?? '';
+
+      log('🟢 [AuthService._loginWithGoogleDesktop] Tokens obtained from Google. idToken len: ${idToken.length}');
+
+      final decodedIdToken = JwtDecoder.decode(idToken);
+      final email = decodedIdToken['email'] as String? ?? '';
+      final googleId = decodedIdToken['sub'] as String? ?? '';
+      final name = decodedIdToken['name'] as String? ?? '';
+
+      final payload = {
+        'email': email,
+        'googleId': googleId,
+        'name': name,
+        'idToken': idToken,
+        'accessToken': accessToken,
+      };
+
+      log('🔵 [AuthService._loginWithGoogleDesktop] Sending payload to ${ApiConstants.googleLogin}...');
+
+      final response = await apiClient.post(
+        ApiConstants.googleLogin,
+        data: payload,
+      );
+
+      log('🟢 [AuthService._loginWithGoogleDesktop] Backend response: status=${response.statusCode}');
+
+      if (response.data != null) {
+        final backendTokenResponse = TokenResponse.fromJson(
+          response.data is Map<String, dynamic>
+              ? response.data
+              : Map<String, dynamic>.from(response.data as Map),
+        );
+
+        final userEmail = backendTokenResponse.email ?? email;
+        final userId = userEmail;
+
+        await storage.saveTokens(
+          accessToken: backendTokenResponse.accessToken,
+          refreshToken: backendTokenResponse.refreshToken,
+          userId: userId,
+          email: userEmail,
+        );
+
+        log('🟢 [AuthService._loginWithGoogleDesktop] Login completed successfully for user: $userEmail');
+
+        return UserModel(
+          id: userId,
+          email: userEmail,
+          displayName: name,
+        );
+      } else {
+        throw Exception('Google girişi sonrası geçersiz sunucu yanıtı.');
+      }
+    } catch (e) {
+      log('🔴 [AuthService._loginWithGoogleDesktop] Error: $e');
+      if (e.toString().startsWith('Exception: ')) {
+        rethrow;
+      }
+      throw Exception('Masaüstü Google girişi sırasında hata oluştu: $e');
+    } finally {
+      await server?.close(force: true);
+    }
   }
 }
