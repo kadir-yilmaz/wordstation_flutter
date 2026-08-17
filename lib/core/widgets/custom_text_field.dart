@@ -6,14 +6,14 @@ class CustomTextField extends StatefulWidget {
   final String? hintText;
   final TextEditingController? controller;
   final bool isPassword;
-  final TextInputType keyboardType;
-  final TextInputAction textInputAction;
+  final TextInputType? keyboardType;
+  final TextInputAction? textInputAction;
   final FormFieldValidator<String>? validator;
   final ValueChanged<String>? onChanged;
   final ValueChanged<String>? onSubmitted;
   final IconData? prefixIcon;
   final Widget? suffixIcon;
-  final int maxLines;
+  final int? maxLines;
   final int? minLines;
   final bool autofocus;
   final FocusNode? focusNode;
@@ -26,8 +26,8 @@ class CustomTextField extends StatefulWidget {
     this.hintText,
     this.controller,
     this.isPassword = false,
-    this.keyboardType = TextInputType.text,
-    this.textInputAction = TextInputAction.next,
+    this.keyboardType,
+    this.textInputAction,
     this.validator,
     this.onChanged,
     this.onSubmitted,
@@ -52,6 +52,17 @@ class _CustomTextFieldState extends State<CustomTextField> {
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
+    final effectiveMaxLines = widget.isPassword ? 1 : widget.maxLines;
+    final effectiveMinLines = widget.isPassword ? 1 : widget.minLines;
+    final isMultiline = (effectiveMaxLines == null || effectiveMaxLines > 1) ||
+        (effectiveMinLines != null && effectiveMinLines > 1);
+
+    final effectiveKeyboardType = widget.keyboardType ??
+        (isMultiline ? TextInputType.multiline : TextInputType.text);
+
+    final effectiveTextInputAction = widget.textInputAction ??
+        (isMultiline ? TextInputAction.newline : TextInputAction.next);
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -71,13 +82,13 @@ class _CustomTextFieldState extends State<CustomTextField> {
         TextFormField(
           controller: widget.controller,
           obscureText: widget.isPassword ? _obscureText : false,
-          keyboardType: widget.keyboardType,
-          textInputAction: widget.textInputAction,
+          keyboardType: effectiveKeyboardType,
+          textInputAction: effectiveTextInputAction,
           validator: widget.validator,
           onChanged: widget.onChanged,
           onFieldSubmitted: widget.onSubmitted,
-          minLines: widget.isPassword ? 1 : widget.minLines,
-          maxLines: widget.isPassword ? 1 : widget.maxLines,
+          minLines: effectiveMinLines,
+          maxLines: effectiveMaxLines,
           autofocus: widget.autofocus,
           focusNode: widget.focusNode,
           readOnly: widget.readOnly,

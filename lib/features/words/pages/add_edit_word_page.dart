@@ -361,8 +361,8 @@ class _AddEditWordPageState extends ConsumerState<AddEditWordPage> {
                     label: 'Örnek Cümle (İsteğe bağlı)',
                     hintText: 'Örn: Smartphones have become ubiquitous in daily life.',
                     prefixIcon: null, // Tırnak işareti kaldırıldı, tam genişlik
-                    minLines: 6,
-                    maxLines: 10,
+                    minLines: 4,
+                    maxLines: null,
                   ),
                   const SizedBox(height: 28),
 
