@@ -37,11 +37,15 @@ class GoogleAuthConstants {
       '276618571409-ab968vnnog57q3dldma2r9nadperm53d.apps.googleusercontent.com';
   static const String webClientId =
       '276618571409-4fsiaaab85ctjbfqvb4pg5mqnluh84rr.apps.googleusercontent.com';
+  static const String desktopClientId =
+      '276618571409-j079peo6q2sd1gg2s77cq3rop72s56ia.apps.googleusercontent.com';
 
-  /// On iOS/macOS returns Apple Client ID, on Web returns Web Client ID.
+  /// On iOS/macOS returns Apple Client ID, on Web returns Web Client ID, on Windows/Linux returns Desktop Client ID.
   static String? get clientId {
     if (kIsWeb) return webClientId;
-    return (Platform.isIOS || Platform.isMacOS) ? iosClientId : null;
+    if (Platform.isIOS || Platform.isMacOS) return iosClientId;
+    if (Platform.isWindows || Platform.isLinux) return desktopClientId;
+    return null;
   }
 
   /// serverClientId should be null when relying on native client authentication
