@@ -62,6 +62,48 @@ class JwtDecoder {
     return null;
   }
 
+  /// Get issued-at date from JWT 'iat' claim
+  static DateTime? getIssuedAtDate(String token) {
+    final decoded = decode(token);
+    final iat = decoded['iat'] ?? decoded['nbf'];
+    if (iat == null) return null;
+
+    if (iat is int) {
+      return DateTime.fromMillisecondsSinceEpoch(iat * 1000, isUtc: true).toLocal();
+    } else if (iat is String) {
+      final parsedInt = int.tryParse(iat);
+      if (parsedInt != null) {
+        return DateTime.fromMillisecondsSinceEpoch(parsedInt * 1000, isUtc: true).toLocal();
+      }
+    }
+    return null;
+  }
+
+  /// Get total lifespan duration of the token (exp - iat)
+  static Duration? getLifespan(String token) {
+    final exp = getExpirationDate(token);
+    final iat = getIssuedAtDate(token);
+    if (exp != null && iat != null) {
+      return exp.difference(iat);
+    }
+    return null;
+  }
+
+  /// Format lifespan to readable format like "15 Dakika" or "7 Gün"
+  static String formatLifespan(Duration? duration) {
+    if (duration == null) return '15 Dakika (Varsayılan)';
+    if (duration.inDays > 0) {
+      return '${duration.inDays} Gün';
+    }
+    if (duration.inHours > 0) {
+      return '${duration.inHours} Saat';
+    }
+    if (duration.inMinutes > 0) {
+      return '${duration.inMinutes} Dakika';
+    }
+    return '${duration.inSeconds} Saniye';
+  }
+
   /// Check if token is expired
   static bool isExpired(String token) {
     final expDate = getExpirationDate(token);

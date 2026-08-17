@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/utils/jwt_decoder.dart';
 import '../../../core/widgets/responsive_layout.dart';
@@ -23,6 +24,9 @@ class _TokenInspectorPageState extends ConsumerState<TokenInspectorPage> {
   String? _email;
   Map<String, dynamic> _jwtClaims = {};
   DateTime? _accessExpDate;
+  DateTime? _accessIatDate;
+  Duration? _accessLifespan;
+  DateTime? _refreshExpDate;
   bool _isLoading = true;
   bool _isRefreshing = false;
   String? _errorMessage;
@@ -43,7 +47,7 @@ class _TokenInspectorPageState extends ConsumerState<TokenInspectorPage> {
 
   void _startTicker() {
     _tickerTimer = Timer.periodic(const Duration(seconds: 1), (_) {
-      if (mounted && _accessExpDate != null) {
+      if (mounted && (_accessExpDate != null || _refreshExpDate != null)) {
         setState(() {});
       }
     });
@@ -65,6 +69,18 @@ class _TokenInspectorPageState extends ConsumerState<TokenInspectorPage> {
       if (accessToken != null && accessToken.isNotEmpty) {
         final claims = JwtDecoder.decode(accessToken);
         final expDate = JwtDecoder.getExpirationDate(accessToken);
+        final iatDate = JwtDecoder.getIssuedAtDate(accessToken);
+        final lifespan = JwtDecoder.getLifespan(accessToken);
+
+        // Try to parse refresh token expiration from claims or storage
+        DateTime? refExp;
+        final refExpClaim = claims['RefreshTokenExpiration'] ??
+            claims['refreshTokenExpiration'] ??
+            claims['ref_exp'];
+        if (refExpClaim != null) {
+          refExp = DateTime.tryParse(refExpClaim.toString());
+        }
+        refExp ??= iatDate?.add(const Duration(days: 7));
 
         if (mounted) {
           setState(() {
@@ -74,6 +90,9 @@ class _TokenInspectorPageState extends ConsumerState<TokenInspectorPage> {
             _email = email;
             _jwtClaims = claims;
             _accessExpDate = expDate;
+            _accessIatDate = iatDate;
+            _accessLifespan = lifespan;
+            _refreshExpDate = refExp;
             _isLoading = false;
           });
         }
@@ -86,6 +105,9 @@ class _TokenInspectorPageState extends ConsumerState<TokenInspectorPage> {
             _email = email;
             _jwtClaims = {};
             _accessExpDate = null;
+            _accessIatDate = null;
+            _accessLifespan = null;
+            _refreshExpDate = null;
             _isLoading = false;
           });
         }
@@ -115,6 +137,17 @@ class _TokenInspectorPageState extends ConsumerState<TokenInspectorPage> {
 
       final claims = JwtDecoder.decode(response.accessToken);
       final expDate = JwtDecoder.getExpirationDate(response.accessToken);
+      final iatDate = JwtDecoder.getIssuedAtDate(response.accessToken);
+      final lifespan = JwtDecoder.getLifespan(response.accessToken);
+
+      DateTime? refExp;
+      final refExpClaim = claims['RefreshTokenExpiration'] ??
+          claims['refreshTokenExpiration'] ??
+          claims['ref_exp'];
+      if (refExpClaim != null) {
+        refExp = DateTime.tryParse(refExpClaim.toString());
+      }
+      refExp ??= iatDate?.add(const Duration(days: 7));
 
       if (mounted) {
         setState(() {
@@ -124,6 +157,9 @@ class _TokenInspectorPageState extends ConsumerState<TokenInspectorPage> {
           _email = response.email ?? _email;
           _jwtClaims = claims;
           _accessExpDate = expDate;
+          _accessIatDate = iatDate;
+          _accessLifespan = lifespan;
+          _refreshExpDate = refExp;
           _isRefreshing = false;
         });
 
@@ -176,20 +212,71 @@ class _TokenInspectorPageState extends ConsumerState<TokenInspectorPage> {
     );
   }
 
-  String get _platformStorageInfo {
+  Future<void> _openJwtIo(String token) async {
+    final url = Uri.parse('https://jwt.io/#debugger-io?token=$token');
+    try {
+      if (await canLaunchUrl(url)) {
+        await launchUrl(url, mode: LaunchMode.externalApplication);
+      } else {
+        _copyToClipboard(url.toString(), 'jwt.io Bağlantısı');
+      }
+    } catch (_) {
+      _copyToClipboard(url.toString(), 'jwt.io Bağlantısı');
+    }
+  }
+
+  String get _accessStorageLocation {
     if (kIsWeb) {
-      return 'Web Secure Storage / SameSite HttpOnly Cookie & Local Protection';
+      return 'Web Secure Storage (Memory / Authorization Header)';
     }
     if (Platform.isIOS) {
       return 'Apple Keychain (kSecAttrAccessibleAfterFirstUnlock)';
     }
     if (Platform.isMacOS) {
-      return 'macOS Keychain Services (Hardware-backed Secure Storage)';
+      return 'macOS Keychain Services (Hardware Security)';
     }
     if (Platform.isAndroid) {
       return 'Android Keystore + EncryptedSharedPreferences (AES-256 GCM)';
     }
-    return 'OS Native Secure Storage';
+    return 'Cihaz Güvenli Depolaması';
+  }
+
+  String get _refreshStorageLocation {
+    if (kIsWeb) {
+      return 'HttpOnly SameSite Secure Cookie (Tarayıcı JS okuyamaz, sunucuya şifreli taşınır)';
+    }
+    if (Platform.isIOS) {
+      return 'Apple Keychain (kSecAttrAccessibleAfterFirstUnlock)';
+    }
+    if (Platform.isMacOS) {
+      return 'macOS Keychain Services (Hardware Security)';
+    }
+    if (Platform.isAndroid) {
+      return 'Android Keystore + EncryptedSharedPreferences (AES-256 GCM)';
+    }
+    return 'Cihaz Güvenli Depolaması';
+  }
+
+  String _formatRemainingHuman(DateTime? expDate) {
+    if (expDate == null) return 'Bilinmiyor';
+    final diff = expDate.difference(DateTime.now());
+    if (diff.isNegative) return 'Süresi Doldu';
+
+    if (diff.inDays > 0) {
+      final days = diff.inDays;
+      final hours = diff.inHours % 24;
+      final mins = diff.inMinutes % 60;
+      return '$days gün $hours sa $mins dk';
+    }
+    if (diff.inHours > 0) {
+      final hours = diff.inHours;
+      final mins = diff.inMinutes % 60;
+      final secs = diff.inSeconds % 60;
+      return '$hours sa $mins dk $secs sn';
+    }
+    final mins = diff.inMinutes;
+    final secs = diff.inSeconds % 60;
+    return '$mins dk $secs sn';
   }
 
   @override
@@ -234,24 +321,24 @@ class _TokenInspectorPageState extends ConsumerState<TokenInspectorPage> {
                 maxWidth: 960,
                 child: SingleChildScrollView(
                   physics: const BouncingScrollPhysics(),
-                  padding: const EdgeInsets.fromLTRB(20, 8, 20, 40),
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 40),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      // 1. Header Banner (Cookie & Token Demo - WordStation Auth Mimarisinin Röntgeni)
+                      // 1. Header Banner (Responsive & Mobile-Proof)
                       _buildHeaderBanner(isDark, isAuthenticated, remainingTimeStr),
 
-                      const SizedBox(height: 20),
+                      const SizedBox(height: 18),
 
                       // 2. Access Token Card (JWT)
                       _buildAccessTokenCard(isDark, remainingTimeStr),
 
-                      const SizedBox(height: 20),
+                      const SizedBox(height: 18),
 
                       // 3. Refresh Token Card
                       _buildRefreshTokenCard(isDark),
 
-                      const SizedBox(height: 20),
+                      const SizedBox(height: 18),
 
                       // 4. Claims & Storage Information Card
                       _buildClaimsTableCard(isDark),
@@ -265,7 +352,7 @@ class _TokenInspectorPageState extends ConsumerState<TokenInspectorPage> {
 
   Widget _buildHeaderBanner(bool isDark, bool isAuthenticated, String remainingTimeStr) {
     return Container(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: isDark ? const Color(0xFF161820) : Colors.white,
         borderRadius: BorderRadius.circular(20),
@@ -284,25 +371,22 @@ class _TokenInspectorPageState extends ConsumerState<TokenInspectorPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // Title Row with Shield
           Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Shield Icon
               Container(
-                padding: const EdgeInsets.all(10),
+                padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
                   color: const Color(0xFF007AFF).withValues(alpha: 0.15),
-                  borderRadius: BorderRadius.circular(14),
+                  borderRadius: BorderRadius.circular(12),
                 ),
                 child: const Icon(
                   Icons.shield_outlined,
-                  size: 28,
+                  size: 24,
                   color: Color(0xFF007AFF),
                 ),
               ),
-              const SizedBox(width: 14),
-
-              // Title and Subtitle
+              const SizedBox(width: 12),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -310,16 +394,16 @@ class _TokenInspectorPageState extends ConsumerState<TokenInspectorPage> {
                     const Text(
                       'Cookie & Token Demo',
                       style: TextStyle(
-                        fontSize: 22,
+                        fontSize: 20,
                         fontWeight: FontWeight.w800,
                         letterSpacing: -0.2,
                       ),
                     ),
-                    const SizedBox(height: 4),
+                    const SizedBox(height: 2),
                     Text(
-                      'WordStation Auth Mimarisinin Röntgeni • Kalan: $remainingTimeStr',
+                      'WordStation Auth Mimarisinin Röntgeni',
                       style: TextStyle(
-                        fontSize: 13,
+                        fontSize: 12.5,
                         fontWeight: FontWeight.w500,
                         color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
                       ),
@@ -327,92 +411,119 @@ class _TokenInspectorPageState extends ConsumerState<TokenInspectorPage> {
                   ],
                 ),
               ),
+            ],
+          ),
 
-              // Top Right Actions
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                crossAxisAlignment: WrapCrossAlignment.center,
-                children: [
-                  // Refresh Token Button
-                  Material(
-                    color: Colors.transparent,
-                    child: InkWell(
-                      onTap: _isRefreshing ? null : _handleRefreshToken,
-                      borderRadius: BorderRadius.circular(12),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFF34C759).withValues(alpha: 0.15),
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(
-                            color: const Color(0xFF34C759).withValues(alpha: 0.35),
-                            width: 1,
-                          ),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            if (_isRefreshing)
-                              const SizedBox(
-                                width: 14,
-                                height: 14,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF34C759)),
-                                ),
-                              )
-                            else
-                              const Icon(Icons.refresh_rounded, size: 16, color: Color(0xFF34C759)),
-                            const SizedBox(width: 6),
-                            const Text(
-                              'Token Yenile',
-                              style: TextStyle(
-                                fontSize: 13,
-                                fontWeight: FontWeight.w600,
-                                color: Color(0xFF34C759),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
+          const SizedBox(height: 14),
 
-                  // Authenticated Badge
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          // Actions & Status Badges Row (Wraps naturally on any screen size)
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              // Refresh Token Button
+              Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  onTap: _isRefreshing ? null : _handleRefreshToken,
+                  borderRadius: BorderRadius.circular(10),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
                     decoration: BoxDecoration(
-                      color: isAuthenticated
-                          ? const Color(0xFF34C759).withValues(alpha: 0.2)
-                          : AppColors.error.withValues(alpha: 0.2),
-                      borderRadius: BorderRadius.circular(12),
+                      color: const Color(0xFF34C759).withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(10),
                       border: Border.all(
-                        color: isAuthenticated ? const Color(0xFF34C759) : AppColors.error,
+                        color: const Color(0xFF34C759).withValues(alpha: 0.35),
                         width: 1,
                       ),
                     ),
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Icon(
-                          isAuthenticated ? Icons.check_circle_rounded : Icons.cancel_rounded,
-                          size: 15,
-                          color: isAuthenticated ? const Color(0xFF34C759) : AppColors.error,
-                        ),
+                        if (_isRefreshing)
+                          const SizedBox(
+                            width: 14,
+                            height: 14,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF34C759)),
+                            ),
+                          )
+                        else
+                          const Icon(Icons.refresh_rounded, size: 16, color: Color(0xFF34C759)),
                         const SizedBox(width: 6),
-                        Text(
-                          isAuthenticated ? 'Authenticated' : 'Unauthenticated',
+                        const Text(
+                          'Token Yenile',
                           style: TextStyle(
                             fontSize: 12.5,
-                            fontWeight: FontWeight.w700,
-                            color: isAuthenticated ? const Color(0xFF34C759) : AppColors.error,
+                            fontWeight: FontWeight.w600,
+                            color: Color(0xFF34C759),
                           ),
                         ),
                       ],
                     ),
                   ),
-                ],
+                ),
+              ),
+
+              // Authenticated Badge
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                decoration: BoxDecoration(
+                  color: isAuthenticated
+                      ? const Color(0xFF34C759).withValues(alpha: 0.18)
+                      : AppColors.error.withValues(alpha: 0.18),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(
+                    color: isAuthenticated ? const Color(0xFF34C759) : AppColors.error,
+                    width: 1,
+                  ),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      isAuthenticated ? Icons.check_circle_rounded : Icons.cancel_rounded,
+                      size: 14,
+                      color: isAuthenticated ? const Color(0xFF34C759) : AppColors.error,
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      isAuthenticated ? 'Authenticated' : 'Unauthenticated',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                        color: isAuthenticated ? const Color(0xFF34C759) : AppColors.error,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
+              // Remaining Live Timer Chip
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+                decoration: BoxDecoration(
+                  color: isDark ? const Color(0xFF222533) : const Color(0xFFE9E9EB),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.timer_outlined, size: 14, color: Color(0xFF007AFF)),
+                    const SizedBox(width: 5),
+                    Text(
+                      'Kalan: $remainingTimeStr',
+                      style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        fontFamily: 'monospace',
+                        color: Color(0xFF007AFF),
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ],
           ),
@@ -423,6 +534,9 @@ class _TokenInspectorPageState extends ConsumerState<TokenInspectorPage> {
 
   Widget _buildAccessTokenCard(bool isDark, String remainingTimeStr) {
     final expFormatted = _accessExpDate != null ? JwtDecoder.formatDate(_accessExpDate) : 'Bilinmiyor';
+    final iatFormatted = _accessIatDate != null ? JwtDecoder.formatDate(_accessIatDate) : 'Bilinmiyor';
+    final lifespanStr = JwtDecoder.formatLifespan(_accessLifespan);
+    final remainingHuman = _formatRemainingHuman(_accessExpDate);
 
     return Container(
       decoration: BoxDecoration(
@@ -438,7 +552,7 @@ class _TokenInspectorPageState extends ConsumerState<TokenInspectorPage> {
         children: [
           // Blue Header
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
             decoration: const BoxDecoration(
               color: Color(0xFF007AFF),
               borderRadius: BorderRadius.only(
@@ -448,12 +562,12 @@ class _TokenInspectorPageState extends ConsumerState<TokenInspectorPage> {
             ),
             child: const Row(
               children: [
-                Icon(Icons.lock_outline_rounded, size: 20, color: Colors.white),
-                SizedBox(width: 10),
+                Icon(Icons.lock_outline_rounded, size: 18, color: Colors.white),
+                SizedBox(width: 8),
                 Text(
                   'Access Token (JWT)',
                   style: TextStyle(
-                    fontSize: 16,
+                    fontSize: 15,
                     fontWeight: FontWeight.w800,
                     color: Colors.white,
                   ),
@@ -463,44 +577,125 @@ class _TokenInspectorPageState extends ConsumerState<TokenInspectorPage> {
           ),
 
           Padding(
-            padding: const EdgeInsets.all(20),
+            padding: const EdgeInsets.all(16),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Raw Token Label & Copy Button
+                // Info 1: Tutulduğu Yer (Storage Location)
+                _buildInfoTag(
+                  icon: Icons.storage_rounded,
+                  label: 'Tutulduğu Yer:',
+                  value: _accessStorageLocation,
+                  color: const Color(0xFF007AFF),
+                  isDark: isDark,
+                ),
+
+                const SizedBox(height: 8),
+
+                // Info 2: Ömrü & Kalan Süre
+                _buildInfoTag(
+                  icon: Icons.access_time_filled_rounded,
+                  label: 'Token Ömrü:',
+                  value: '$lifespanStr  •  Kalan: $remainingHuman ($remainingTimeStr)',
+                  color: const Color(0xFF34C759),
+                  isDark: isDark,
+                ),
+
+                const SizedBox(height: 8),
+
+                // Info 3: Başlangıç & Bitiş Tarihleri
+                _buildInfoTag(
+                  icon: Icons.date_range_rounded,
+                  label: 'Geçerlilik:',
+                  value: '$iatFormatted → $expFormatted',
+                  color: const Color(0xFFFF9500),
+                  isDark: isDark,
+                ),
+
+                const SizedBox(height: 14),
+
+                // Raw Token Header with Actions (Copy & jwt.io)
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     Text(
-                      'Raw Token',
+                      'Raw Token (JWT)',
                       style: TextStyle(
                         fontSize: 13,
-                        fontWeight: FontWeight.w600,
+                        fontWeight: FontWeight.w700,
                         color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
                       ),
                     ),
-                    Row(
+                    Wrap(
+                      spacing: 6,
                       children: [
-                        IconButton(
-                          icon: const Icon(Icons.copy_rounded, size: 18),
-                          tooltip: 'Tokenı Kopyala',
-                          onPressed: _accessToken != null
-                              ? () => _copyToClipboard(_accessToken!, 'Access Token')
-                              : null,
+                        // Copy Button
+                        Material(
+                          color: Colors.transparent,
+                          child: InkWell(
+                            onTap: _accessToken != null
+                                ? () => _copyToClipboard(_accessToken!, 'Access Token')
+                                : null,
+                            borderRadius: BorderRadius.circular(8),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                              decoration: BoxDecoration(
+                                color: isDark ? const Color(0xFF222533) : const Color(0xFFE9E9EB),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: const Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(Icons.copy_rounded, size: 14),
+                                  SizedBox(width: 4),
+                                  Text('Kopyala', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+
+                        // jwt.io Button
+                        Material(
+                          color: Colors.transparent,
+                          child: InkWell(
+                            onTap: _accessToken != null ? () => _openJwtIo(_accessToken!) : null,
+                            borderRadius: BorderRadius.circular(8),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFFF9500).withValues(alpha: 0.15),
+                                borderRadius: BorderRadius.circular(8),
+                                border: Border.all(color: const Color(0xFFFF9500).withValues(alpha: 0.4)),
+                              ),
+                              child: const Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(Icons.open_in_new_rounded, size: 14, color: Color(0xFFFF9500)),
+                                  SizedBox(width: 4),
+                                  Text(
+                                    'jwt.io ↗',
+                                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFFFF9500)),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
                         ),
                       ],
                     ),
                   ],
                 ),
-                const SizedBox(height: 6),
 
-                // Token Raw Box
+                const SizedBox(height: 8),
+
+                // Token Raw Monospace Box
                 Container(
                   width: double.infinity,
-                  padding: const EdgeInsets.all(16),
+                  padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
                     color: isDark ? const Color(0xFF0F1015) : const Color(0xFFF7F7FA),
-                    borderRadius: BorderRadius.circular(14),
+                    borderRadius: BorderRadius.circular(12),
                     border: Border.all(
                       color: isDark ? const Color(0xFF232634) : const Color(0xFFE5E5EA),
                     ),
@@ -509,29 +704,11 @@ class _TokenInspectorPageState extends ConsumerState<TokenInspectorPage> {
                     _accessToken ?? 'Access Token bulunamadı.',
                     style: const TextStyle(
                       fontFamily: 'monospace',
-                      fontSize: 12.5,
+                      fontSize: 11.5,
                       color: Color(0xFF64B5F6),
-                      height: 1.5,
+                      height: 1.4,
                     ),
                   ),
-                ),
-
-                const SizedBox(height: 14),
-
-                // Expiration Details
-                Row(
-                  children: [
-                    const Icon(Icons.access_time_rounded, size: 16, color: Color(0xFF8E8E93)),
-                    const SizedBox(width: 8),
-                    Text(
-                      'Expires: $expFormatted  (Kalan Süre: $remainingTimeStr)',
-                      style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w500,
-                        color: isDark ? AppColors.darkTextMuted : const Color(0xFF8E8E93),
-                      ),
-                    ),
-                  ],
                 ),
               ],
             ),
@@ -542,6 +719,9 @@ class _TokenInspectorPageState extends ConsumerState<TokenInspectorPage> {
   }
 
   Widget _buildRefreshTokenCard(bool isDark) {
+    final refExpFormatted = _refreshExpDate != null ? JwtDecoder.formatDate(_refreshExpDate) : 'Bilinmiyor';
+    final refRemainingHuman = _formatRemainingHuman(_refreshExpDate);
+
     return Container(
       decoration: BoxDecoration(
         color: isDark ? const Color(0xFF161820) : Colors.white,
@@ -556,7 +736,7 @@ class _TokenInspectorPageState extends ConsumerState<TokenInspectorPage> {
         children: [
           // Orange Header
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
             decoration: const BoxDecoration(
               color: Color(0xFFFF9500),
               borderRadius: BorderRadius.only(
@@ -566,12 +746,12 @@ class _TokenInspectorPageState extends ConsumerState<TokenInspectorPage> {
             ),
             child: const Row(
               children: [
-                Icon(Icons.autorenew_rounded, size: 20, color: Colors.white),
-                SizedBox(width: 10),
+                Icon(Icons.autorenew_rounded, size: 18, color: Colors.white),
+                SizedBox(width: 8),
                 Text(
                   'Refresh Token',
                   style: TextStyle(
-                    fontSize: 16,
+                    fontSize: 15,
                     fontWeight: FontWeight.w800,
                     color: Colors.white,
                   ),
@@ -581,38 +761,92 @@ class _TokenInspectorPageState extends ConsumerState<TokenInspectorPage> {
           ),
 
           Padding(
-            padding: const EdgeInsets.all(20),
+            padding: const EdgeInsets.all(16),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                // Info 1: Tutulduğu Yer
+                _buildInfoTag(
+                  icon: Icons.shield_rounded,
+                  label: 'Tutulduğu Yer:',
+                  value: _refreshStorageLocation,
+                  color: const Color(0xFFFF9500),
+                  isDark: isDark,
+                ),
+
+                const SizedBox(height: 8),
+
+                // Info 2: Ömrü & Kalan Süre
+                _buildInfoTag(
+                  icon: Icons.hourglass_top_rounded,
+                  label: 'Token Ömrü:',
+                  value: '7 Gün  •  Kalan: $refRemainingHuman',
+                  color: const Color(0xFF34C759),
+                  isDark: isDark,
+                ),
+
+                const SizedBox(height: 8),
+
+                // Info 3: Bitiş Tarihi
+                _buildInfoTag(
+                  icon: Icons.event_available_rounded,
+                  label: 'Bitiş Tarihi:',
+                  value: refExpFormatted,
+                  color: const Color(0xFF007AFF),
+                  isDark: isDark,
+                ),
+
+                const SizedBox(height: 14),
+
+                // Raw Token Header with Copy
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text(
-                      'Opaque Token (JWT değil - sunucu tarafında doğrulanır)',
-                      style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w500,
-                        color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+                    Expanded(
+                      child: Text(
+                        'Opaque Token (JWT değildir, decode edilemez)',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+                        ),
                       ),
                     ),
-                    IconButton(
-                      icon: const Icon(Icons.copy_rounded, size: 18),
-                      tooltip: 'Refresh Tokenı Kopyala',
-                      onPressed: _refreshToken != null
-                          ? () => _copyToClipboard(_refreshToken!, 'Refresh Token')
-                          : null,
+                    Material(
+                      color: Colors.transparent,
+                      child: InkWell(
+                        onTap: _refreshToken != null
+                            ? () => _copyToClipboard(_refreshToken!, 'Refresh Token')
+                            : null,
+                        borderRadius: BorderRadius.circular(8),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: isDark ? const Color(0xFF222533) : const Color(0xFFE9E9EB),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: const Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.copy_rounded, size: 14),
+                              SizedBox(width: 4),
+                              Text('Kopyala', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+                            ],
+                          ),
+                        ),
+                      ),
                     ),
                   ],
                 ),
-                const SizedBox(height: 6),
+
+                const SizedBox(height: 8),
 
                 Container(
                   width: double.infinity,
-                  padding: const EdgeInsets.all(16),
+                  padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
                     color: isDark ? const Color(0xFF0F1015) : const Color(0xFFF7F7FA),
-                    borderRadius: BorderRadius.circular(14),
+                    borderRadius: BorderRadius.circular(12),
                     border: Border.all(
                       color: isDark ? const Color(0xFF232634) : const Color(0xFFE5E5EA),
                     ),
@@ -621,28 +855,11 @@ class _TokenInspectorPageState extends ConsumerState<TokenInspectorPage> {
                     _refreshToken ?? 'Refresh Token bulunamadı.',
                     style: const TextStyle(
                       fontFamily: 'monospace',
-                      fontSize: 12.5,
+                      fontSize: 11.5,
                       color: Color(0xFFFFB74D),
-                      height: 1.5,
+                      height: 1.4,
                     ),
                   ),
-                ),
-
-                const SizedBox(height: 14),
-
-                Row(
-                  children: [
-                    const Icon(Icons.verified_user_outlined, size: 16, color: Color(0xFF8E8E93)),
-                    const SizedBox(width: 8),
-                    Text(
-                      'Durum: Aktif ve Güvenli Depolamada Saklanıyor',
-                      style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w500,
-                        color: isDark ? AppColors.darkTextMuted : const Color(0xFF8E8E93),
-                      ),
-                    ),
-                  ],
                 ),
               ],
             ),
@@ -653,7 +870,6 @@ class _TokenInspectorPageState extends ConsumerState<TokenInspectorPage> {
   }
 
   Widget _buildClaimsTableCard(bool isDark) {
-    // Generate unified claims list from JWT and storage info
     final rows = <MapEntry<String, String>>[];
 
     if (_email != null && _email!.isNotEmpty) {
@@ -671,15 +887,15 @@ class _TokenInspectorPageState extends ConsumerState<TokenInspectorPage> {
     });
 
     if (_accessToken != null && _accessToken!.isNotEmpty) {
-      final preview = _accessToken!.length > 40
-          ? '${_accessToken!.substring(0, 30)}...'
+      final preview = _accessToken!.length > 30
+          ? '${_accessToken!.substring(0, 25)}...'
           : _accessToken!;
       rows.add(MapEntry('Token', preview));
     }
 
     if (_refreshToken != null && _refreshToken!.isNotEmpty) {
-      final preview = _refreshToken!.length > 30
-          ? '${_refreshToken!.substring(0, 25)}...'
+      final preview = _refreshToken!.length > 25
+          ? '${_refreshToken!.substring(0, 20)}...'
           : _refreshToken!;
       rows.add(MapEntry('RefreshToken', preview));
     }
@@ -702,7 +918,7 @@ class _TokenInspectorPageState extends ConsumerState<TokenInspectorPage> {
         children: [
           // Turquoise Header
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
             decoration: const BoxDecoration(
               color: Color(0xFF00C7BE),
               borderRadius: BorderRadius.only(
@@ -713,30 +929,35 @@ class _TokenInspectorPageState extends ConsumerState<TokenInspectorPage> {
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Row(
-                  children: [
-                    Icon(Icons.inventory_2_outlined, size: 20, color: Colors.white),
-                    SizedBox(width: 10),
-                    Text(
-                      'Cookie & Cihaz Güvenli Depolama (Claims)',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w800,
-                        color: Colors.white,
+                const Expanded(
+                  child: Row(
+                    children: [
+                      Icon(Icons.inventory_2_outlined, size: 18, color: Colors.white),
+                      SizedBox(width: 8),
+                      Flexible(
+                        child: Text(
+                          'Cookie & Depolama Bilgileri (Claims)',
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w800,
+                            color: Colors.white,
+                          ),
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                   decoration: BoxDecoration(
                     color: Colors.white.withValues(alpha: 0.25),
-                    borderRadius: BorderRadius.circular(10),
+                    borderRadius: BorderRadius.circular(8),
                   ),
                   child: Text(
                     '${rows.length} adet',
                     style: const TextStyle(
-                      fontSize: 12,
+                      fontSize: 11.5,
                       fontWeight: FontWeight.w700,
                       color: Colors.white,
                     ),
@@ -747,13 +968,13 @@ class _TokenInspectorPageState extends ConsumerState<TokenInspectorPage> {
           ),
 
           Padding(
-            padding: const EdgeInsets.all(20),
+            padding: const EdgeInsets.all(16),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 // Platform Storage Diagnostic Box
                 Container(
-                  padding: const EdgeInsets.all(14),
+                  padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
                     color: const Color(0xFF00C7BE).withValues(alpha: 0.08),
                     borderRadius: BorderRadius.circular(12),
@@ -764,25 +985,25 @@ class _TokenInspectorPageState extends ConsumerState<TokenInspectorPage> {
                   child: Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Icon(Icons.info_outline_rounded, size: 20, color: Color(0xFF00C7BE)),
-                      const SizedBox(width: 10),
+                      const Icon(Icons.info_outline_rounded, size: 18, color: Color(0xFF00C7BE)),
+                      const SizedBox(width: 8),
                       Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              'Depolama Mimarisi: $_platformStorageInfo',
+                              'Platform: $_accessStorageLocation',
                               style: const TextStyle(
-                                fontSize: 13,
+                                fontSize: 12.5,
                                 fontWeight: FontWeight.w700,
                                 color: Color(0xFF00C7BE),
                               ),
                             ),
                             const SizedBox(height: 4),
                             Text(
-                              'Tokenlar platformun en yüksek güvenlikli donanım destekli şifreli kasasında saklanır. Ağ isteklerinde otomatik Bearer başlığı ile gönderilir.',
+                              'Tokenlar platformun donanım destekli güvenli kasasında şifreli saklanır. Ağ isteklerinde otomatik Authorization Bearer başlığıyla gönderilir.',
                               style: TextStyle(
-                                fontSize: 12,
+                                fontSize: 11.5,
                                 color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
                               ),
                             ),
@@ -793,11 +1014,11 @@ class _TokenInspectorPageState extends ConsumerState<TokenInspectorPage> {
                   ),
                 ),
 
-                const SizedBox(height: 16),
+                const SizedBox(height: 14),
 
                 // Table Header
                 Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
                   child: Row(
                     children: [
                       Expanded(
@@ -805,7 +1026,7 @@ class _TokenInspectorPageState extends ConsumerState<TokenInspectorPage> {
                         child: Text(
                           'Claim Type',
                           style: TextStyle(
-                            fontSize: 13,
+                            fontSize: 12,
                             fontWeight: FontWeight.w700,
                             color: isDark ? AppColors.darkTextPrimary : AppColors.lightTextPrimary,
                           ),
@@ -816,7 +1037,7 @@ class _TokenInspectorPageState extends ConsumerState<TokenInspectorPage> {
                         child: Text(
                           'Value',
                           style: TextStyle(
-                            fontSize: 13,
+                            fontSize: 12,
                             fontWeight: FontWeight.w700,
                             color: isDark ? AppColors.darkTextPrimary : AppColors.lightTextPrimary,
                           ),
@@ -837,17 +1058,16 @@ class _TokenInspectorPageState extends ConsumerState<TokenInspectorPage> {
                   itemBuilder: (context, idx) {
                     final item = rows[idx];
                     return Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
+                      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 10),
                       child: Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          // Claim Type Badge
                           Expanded(
                             flex: 4,
                             child: Align(
                               alignment: Alignment.centerLeft,
                               child: Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
                                 decoration: BoxDecoration(
                                   color: const Color(0xFFFF9500).withValues(alpha: 0.12),
                                   borderRadius: BorderRadius.circular(6),
@@ -856,7 +1076,7 @@ class _TokenInspectorPageState extends ConsumerState<TokenInspectorPage> {
                                   item.key,
                                   style: const TextStyle(
                                     fontFamily: 'monospace',
-                                    fontSize: 12,
+                                    fontSize: 11,
                                     fontWeight: FontWeight.w700,
                                     color: Color(0xFFFF9500),
                                   ),
@@ -864,10 +1084,7 @@ class _TokenInspectorPageState extends ConsumerState<TokenInspectorPage> {
                               ),
                             ),
                           ),
-
                           const SizedBox(width: 8),
-
-                          // Claim Value
                           Expanded(
                             flex: 6,
                             child: InkWell(
@@ -877,7 +1094,7 @@ class _TokenInspectorPageState extends ConsumerState<TokenInspectorPage> {
                                 item.value,
                                 style: TextStyle(
                                   fontFamily: 'monospace',
-                                  fontSize: 12.5,
+                                  fontSize: 11.5,
                                   color: isDark ? Colors.white70 : Colors.black87,
                                 ),
                               ),
@@ -889,6 +1106,49 @@ class _TokenInspectorPageState extends ConsumerState<TokenInspectorPage> {
                   },
                 ),
               ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildInfoTag({
+    required IconData icon,
+    required String label,
+    required String value,
+    required Color color,
+    required bool isDark,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: color.withValues(alpha: 0.2)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, size: 16, color: color),
+          const SizedBox(width: 8),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+              color: color,
+            ),
+          ),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Text(
+              value,
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: isDark ? Colors.white : Colors.black87,
+              ),
             ),
           ),
         ],

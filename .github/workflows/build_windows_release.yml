@@ -1,0 +1,107 @@
+name: Build & Release Windows App
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Uygulama Versiyonu (örn: 1.0.4)'
+        required: true
+        default: '1.0.4'
+        type: string
+      build_number:
+        description: 'Build Numarası (Boş bırakılırsa run numarası kullanılır)'
+        required: false
+        default: ''
+        type: string
+      release_notes:
+        description: 'Sürüm Notları (Release Notes)'
+        required: false
+        default: 'WordStation Windows Masaüstü Sürümü.'
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Flutter with Cache
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          cache: true
+          cache-key: 'flutter-:os:-:channel:-:version:-:arch:'
+          cache-path: '${{ runner.tool_cache }}/flutter'
+
+      - name: Cache Pub Dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~\AppData\Local\Pub\Cache
+          key: ${{ runner.os }}-pub-${{ hashFiles('pubspec.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-pub-
+
+      - name: Enable Windows Desktop Support
+        run: flutter config --enable-windows-desktop
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Run unit & widget tests
+        run: flutter test
+
+      - name: Determine Version and Build Number
+        id: versioning
+        shell: bash
+        run: |
+          VERSION="${{ inputs.version }}"
+          BUILD_NUM="${{ inputs.build_number }}"
+          if [ -z "$BUILD_NUM" ]; then
+            BUILD_NUM="${{ github.run_number }}"
+          fi
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "build_number=$BUILD_NUM" >> $GITHUB_OUTPUT
+          echo "Windows Versiyonu: $VERSION (Build: $BUILD_NUM)"
+
+      - name: Build Windows Application (Release)
+        run: |
+          flutter build windows --release --build-name="${{ steps.versioning.outputs.version }}" --build-number="${{ steps.versioning.outputs.build_number }}"
+
+      - name: Prepare Windows Release ZIP
+        shell: pwsh
+        run: |
+          $version = "${{ steps.versioning.outputs.version }}"
+          New-Item -ItemType Directory -Force -Path release_assets
+          $zipPath = "release_assets\wordstation-v$version-windows-x64.zip"
+          Compress-Archive -Path "build\windows\x64\runner\Release\*" -DestinationPath $zipPath -Force
+          Write-Host "✅ Windows ZIP oluşturuldu: $zipPath"
+
+      - name: Upload to GitHub Release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION="${{ steps.versioning.outputs.version }}"
+          TAG="v${VERSION}"
+          TITLE="WordStation v${VERSION}"
+          NOTES="${{ inputs.release_notes }}"
+          ZIP_FILE="release_assets/wordstation-v${VERSION}-windows-x64.zip"
+
+          echo "GitHub Release'e dosya yükleniyor: $ZIP_FILE -> $TAG"
+          
+          # Release varsa dosyayı ekle, yoksa yeni release oluştur
+          gh release upload "$TAG" "$ZIP_FILE" --clobber || \
+          gh release create "$TAG" "$ZIP_FILE" \
+            --title "$TITLE" \
+            --notes "$NOTES" \
+            --target "${{ github.sha }}"
+
+          echo "✅ Windows sürümü GitHub Releases'e başarıyla yüklendi: $TAG"

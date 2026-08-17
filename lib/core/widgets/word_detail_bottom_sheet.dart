@@ -5,15 +5,17 @@ import 'package:flutter_tts/flutter_tts.dart';
 import '../theme/app_colors.dart';
 import '../../features/words/models/word_model.dart';
 
-void showWordDetailModal(
+Future<void> showWordDetailModal(
   BuildContext context, {
   required WordModel word,
   List<WordModel> allWords = const [],
-}) {
+}) async {
   HapticFeedback.mediumImpact();
+  FocusManager.instance.primaryFocus?.unfocus();
+  FocusScope.of(context).unfocus();
   final isDark = Theme.of(context).brightness == Brightness.dark;
 
-  showModalBottomSheet(
+  await showModalBottomSheet(
     context: context,
     isScrollControlled: true,
     backgroundColor: Colors.transparent,
@@ -22,6 +24,8 @@ void showWordDetailModal(
       isDark: isDark,
     ),
   );
+
+  FocusManager.instance.primaryFocus?.unfocus();
 }
 
 class WordDetailBottomSheet extends StatefulWidget {

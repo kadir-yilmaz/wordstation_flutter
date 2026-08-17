@@ -1,0 +1,109 @@
+name: Build & Release Linux App
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Uygulama Versiyonu (örn: 1.0.4)'
+        required: true
+        default: '1.0.4'
+        type: string
+      build_number:
+        description: 'Build Numarası (Boş bırakılırsa run numarası kullanılır)'
+        required: false
+        default: ''
+        type: string
+      release_notes:
+        description: 'Sürüm Notları (Release Notes)'
+        required: false
+        default: 'WordStation Linux Masaüstü Sürümü.'
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  build-linux:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install Linux Build Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev liblzma-dev libsecret-1-dev
+
+      - name: Set up Flutter with Cache
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          cache: true
+          cache-key: 'flutter-:os:-:channel:-:version:-:arch:'
+          cache-path: '${{ runner.tool_cache }}/flutter'
+
+      - name: Cache Pub Dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.pub-cache
+          key: ${{ runner.os }}-pub-${{ hashFiles('pubspec.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-pub-
+
+      - name: Enable Linux Desktop Support
+        run: flutter config --enable-linux-desktop
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Run unit & widget tests
+        run: flutter test
+
+      - name: Determine Version and Build Number
+        id: versioning
+        run: |
+          VERSION="${{ inputs.version }}"
+          BUILD_NUM="${{ inputs.build_number }}"
+          if [ -z "$BUILD_NUM" ]; then
+            BUILD_NUM="${{ github.run_number }}"
+          fi
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "build_number=$BUILD_NUM" >> $GITHUB_OUTPUT
+          echo "Linux Versiyonu: $VERSION (Build: $BUILD_NUM)"
+
+      - name: Build Linux Application (Release)
+        run: |
+          flutter build linux --release \
+            --build-name="${{ steps.versioning.outputs.version }}" \
+            --build-number="${{ steps.versioning.outputs.build_number }}"
+
+      - name: Prepare Linux Release Archive (tar.gz)
+        run: |
+          VERSION="${{ steps.versioning.outputs.version }}"
+          mkdir -p release_assets
+          tar -czvf "release_assets/wordstation-v${VERSION}-linux-x64.tar.gz" -C build/linux/x64/release/bundle .
+          echo "✅ Linux arşivi hazırlandı: release_assets/wordstation-v${VERSION}-linux-x64.tar.gz"
+
+      - name: Upload to GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION="${{ steps.versioning.outputs.version }}"
+          TAG="v${VERSION}"
+          TITLE="WordStation v${VERSION}"
+          NOTES="${{ inputs.release_notes }}"
+          TAR_FILE="release_assets/wordstation-v${VERSION}-linux-x64.tar.gz"
+
+          echo "GitHub Release'e dosya yükleniyor: $TAR_FILE -> $TAG"
+          
+          # Release varsa dosyayı ekle, yoksa yeni release oluştur
+          gh release upload "$TAG" "$TAR_FILE" --clobber || \
+          gh release create "$TAG" "$TAR_FILE" \
+            --title "$TITLE" \
+            --notes "$NOTES" \
+            --target "${{ github.sha }}"
+
+          echo "✅ Linux sürümü GitHub Releases'e başarıyla yüklendi: $TAG"

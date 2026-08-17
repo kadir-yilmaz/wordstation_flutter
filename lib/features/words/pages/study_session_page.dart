@@ -1,13 +1,18 @@
-import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/widgets/responsive_layout.dart';
-import '../../../core/widgets/word_detail_bottom_sheet.dart';
 import '../controllers/study_controller.dart';
 import '../controllers/word_list_controller.dart';
 import '../models/word_model.dart';
+import '../widgets/study/study_control_buttons.dart';
+import '../widgets/study/study_empty_state.dart';
+import '../widgets/study/study_example_box.dart';
+import '../widgets/study/study_progress_slider.dart';
+import '../widgets/study/study_search_bar.dart';
+import '../widgets/study/study_synonyms_bar.dart';
+import '../widgets/study/study_word_card.dart';
 import 'add_edit_word_page.dart';
 
 class StudySessionPage extends ConsumerStatefulWidget {
@@ -31,15 +36,18 @@ class _StudySessionPageState extends ConsumerState<StudySessionPage>
   bool _isNavigating = false;
   late AnimationController _flipAnimationController;
   late Animation<double> _flipAnimation;
+
   final TextEditingController _searchController = TextEditingController();
+  final FocusNode _pageFocusNode = FocusNode();
+  final FocusNode _searchFocusNode = FocusNode();
+
   final ScrollController _exampleScrollController = ScrollController();
-  final ScrollController _synonymsScrollController = ScrollController();
+  final ScrollController _desktopSynonymsScrollController = ScrollController();
+  final ScrollController _mobileSynonymsScrollController = ScrollController();
 
   @override
   void initState() {
     super.initState();
-    HardwareKeyboard.instance.addHandler(_handleKeyEvent);
-
     _flipAnimationController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 400),
@@ -57,35 +65,54 @@ class _StudySessionPageState extends ConsumerState<StudySessionPage>
             widget.words,
             initialIndex: widget.initialIndex,
           );
+      _pageFocusNode.requestFocus();
     });
   }
 
   @override
   void dispose() {
-    HardwareKeyboard.instance.removeHandler(_handleKeyEvent);
+    _pageFocusNode.dispose();
     _flipAnimationController.dispose();
     _searchController.dispose();
+    _searchFocusNode.dispose();
     _exampleScrollController.dispose();
-    _synonymsScrollController.dispose();
+    _desktopSynonymsScrollController.dispose();
+    _mobileSynonymsScrollController.dispose();
     super.dispose();
   }
 
-  bool _handleKeyEvent(KeyEvent event) {
-    if (event is! KeyDownEvent) return false;
-    if (!mounted) return false;
+  KeyEventResult _onKeyEvent(FocusNode node, KeyEvent event) {
+    if (event is! KeyDownEvent) return KeyEventResult.ignored;
+    if (!mounted) return KeyEventResult.ignored;
 
-    // Sayfa ekranda aktif/görünür değilse (üstüne başka sayfa açılmışsa) yakalama
-    if (ModalRoute.of(context)?.isCurrent == false) return false;
+    // Sayfa ekranda aktif/görünür değilse yakalama
+    if (ModalRoute.of(context)?.isCurrent == false) {
+      return KeyEventResult.ignored;
+    }
 
-    // Arama kutusu veya metin alanında yazıyorsa klavye kısayollarını devre dışı bırak
-    final isEditingText =
-        FocusManager.instance.primaryFocus?.context?.widget is EditableText;
-    if (isEditingText) {
-      if (event.logicalKey == LogicalKeyboardKey.escape) {
-        FocusScope.of(context).unfocus();
-        return true;
+    // Arama kutusu odaklanmışsa veya herhangi bir metin alanı aktifse
+    if (_searchFocusNode.hasFocus) {
+      if (event.logicalKey == LogicalKeyboardKey.escape ||
+          event.logicalKey == LogicalKeyboardKey.enter) {
+        _searchFocusNode.unfocus();
+        _pageFocusNode.requestFocus();
+        return KeyEventResult.handled;
       }
-      return false;
+      return KeyEventResult.ignored;
+    }
+
+    final primaryFocus = FocusManager.instance.primaryFocus;
+    if (primaryFocus != null &&
+        primaryFocus != FocusManager.instance.rootScope &&
+        primaryFocus != _pageFocusNode &&
+        (primaryFocus.context?.findAncestorWidgetOfExactType<EditableText>() != null ||
+            primaryFocus.context?.widget is EditableText)) {
+      if (event.logicalKey == LogicalKeyboardKey.escape) {
+        primaryFocus.unfocus();
+        _pageFocusNode.requestFocus();
+        return KeyEventResult.handled;
+      }
+      return KeyEventResult.ignored;
     }
 
     final studyState = ref.read(studyControllerProvider);
@@ -96,45 +123,45 @@ class _StudySessionPageState extends ConsumerState<StudySessionPage>
     final hasPrev = hasWords && currentIndex > 0;
     final hasNext = hasWords && currentIndex < totalCount - 1;
 
-    // Sağ Yön Tuşu / D: Sonraki Kelime
+    // 1. Sağ Yön Tuşu / D: Sonraki Kelime
     if (event.logicalKey == LogicalKeyboardKey.arrowRight ||
         event.logicalKey == LogicalKeyboardKey.keyD) {
       if (hasNext) {
         HapticFeedback.lightImpact();
         studyNotifier.next();
-        return true;
       }
+      return KeyEventResult.handled;
     }
-    // Sol Yön Tuşu / A: Önceki Kelime
+    // 2. Sol Yön Tuşu / A: Önceki Kelime
     else if (event.logicalKey == LogicalKeyboardKey.arrowLeft ||
         event.logicalKey == LogicalKeyboardKey.keyA) {
       if (hasPrev) {
         HapticFeedback.lightImpact();
         studyNotifier.prev();
-        return true;
       }
+      return KeyEventResult.handled;
     }
-    // Yukarı Yön Tuşu / Space / W: Kartı Döndür
+    // 3. Yukarı Yön Tuşu / Space / W: Kartı Döndür
     else if (event.logicalKey == LogicalKeyboardKey.arrowUp ||
         event.logicalKey == LogicalKeyboardKey.space ||
         event.logicalKey == LogicalKeyboardKey.keyW) {
       if (hasWords) {
         HapticFeedback.selectionClick();
         studyNotifier.flip();
-        return true;
       }
+      return KeyEventResult.handled;
     }
-    // Aşağı Yön Tuşu / S / R: Rastgele (Random) Modunu Aç/Kapat
+    // 4. Aşağı Yön Tuşu / S / R: Rastgele (Random) Kelime
     else if (event.logicalKey == LogicalKeyboardKey.arrowDown ||
         event.logicalKey == LogicalKeyboardKey.keyS ||
         event.logicalKey == LogicalKeyboardKey.keyR) {
-      if (hasWords) {
+      if (hasWords && totalCount > 1) {
         HapticFeedback.mediumImpact();
         studyNotifier.toggleRandom();
-        return true;
       }
+      return KeyEventResult.handled;
     }
-    // Nokta (.) / V / L / NumpadDecimal: Sesi Oynat (TTS)
+    // 5. Nokta (.) / V / L / NumpadDecimal: Sesi Oynat (TTS)
     else if (event.logicalKey == LogicalKeyboardKey.period ||
         event.logicalKey == LogicalKeyboardKey.numpadDecimal ||
         event.logicalKey == LogicalKeyboardKey.keyV ||
@@ -142,11 +169,11 @@ class _StudySessionPageState extends ConsumerState<StudySessionPage>
       if (hasWords) {
         HapticFeedback.lightImpact();
         studyNotifier.speakCurrent();
-        return true;
       }
+      return KeyEventResult.handled;
     }
 
-    return false;
+    return KeyEventResult.ignored;
   }
 
   void _handleFlip(bool isFlipped) {
@@ -157,7 +184,71 @@ class _StudySessionPageState extends ConsumerState<StudySessionPage>
     }
   }
 
+  Future<void> _handleAddWord() async {
+    final nav = Navigator.of(context);
+    final studyNotifier = ref.read(studyControllerProvider.notifier);
+    final updated = await nav.push<WordModel>(
+      MaterialPageRoute(
+        builder: (_) => AddEditWordPage(
+          initialListName: widget.listTitle != 'All' ? widget.listTitle : null,
+        ),
+      ),
+    );
 
+    if (updated != null && mounted) {
+      ref.read(wordListControllerProvider.notifier).refresh();
+      final allWords = ref.read(wordListControllerProvider).words;
+      final freshListWords = (widget.listTitle != null &&
+              widget.listTitle != 'All' &&
+              widget.listTitle != 'General')
+          ? allWords.where((w) => w.listName == widget.listTitle).toList()
+          : allWords;
+      final targetIdx = freshListWords.indexWhere((w) =>
+          w.id == updated.id ||
+          (w.en == updated.en && w.tr == updated.tr));
+      final nextIndex = targetIdx >= 0 ? targetIdx : 0;
+      studyNotifier.initWithWords(freshListWords, initialIndex: nextIndex);
+    }
+  }
+
+  Future<void> _handleEditCurrentWord(WordModel currentWord) async {
+    if (_isNavigating) return;
+    _isNavigating = true;
+    try {
+      final nav = Navigator.of(context);
+      final studyNotifier = ref.read(studyControllerProvider.notifier);
+      final updated = await nav.push<WordModel>(
+        MaterialPageRoute(
+          builder: (_) => AddEditWordPage(wordToEdit: currentWord),
+        ),
+      );
+
+      if (updated != null && mounted) {
+        ref.read(wordListControllerProvider.notifier).refresh();
+        final allWords = ref.read(wordListControllerProvider).words;
+        final freshListWords = (widget.listTitle != null &&
+                widget.listTitle != 'All' &&
+                widget.listTitle != 'General')
+            ? allWords.where((w) => w.listName == widget.listTitle).toList()
+            : allWords;
+
+        if (freshListWords.isEmpty) {
+          nav.pop();
+        } else {
+          final targetIdx = freshListWords.indexWhere((w) =>
+              w.id == updated.id ||
+              (w.en == updated.en && w.tr == updated.tr));
+          final currentIndex = ref.read(studyControllerProvider).currentIndex;
+          final nextIndex = targetIdx >= 0
+              ? targetIdx
+              : currentIndex.clamp(0, freshListWords.length - 1);
+          studyNotifier.initWithWords(freshListWords, initialIndex: nextIndex);
+        }
+      }
+    } finally {
+      if (mounted) _isNavigating = false;
+    }
+  }
 
   Future<void> _handleDeleteCurrentWord(WordModel word) async {
     final confirmed = await showDialog<bool>(
@@ -218,7 +309,7 @@ class _StudySessionPageState extends ConsumerState<StudySessionPage>
     final studyNotifier = ref.read(studyControllerProvider.notifier);
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    // Listen to flip state changes
+    // Listen to flip state and index changes
     ref.listen<StudyState>(studyControllerProvider, (prev, next) {
       if (prev?.isFlipped != next.isFlipped) {
         _handleFlip(next.isFlipped);
@@ -232,7 +323,6 @@ class _StudySessionPageState extends ConsumerState<StudySessionPage>
 
     if (widget.words.isEmpty) {
       return Scaffold(
-        resizeToAvoidBottomInset: false,
         backgroundColor:
             isDark ? AppColors.darkBackground : AppColors.lightBackground,
         appBar: AppBar(
@@ -251,48 +341,12 @@ class _StudySessionPageState extends ConsumerState<StudySessionPage>
           ),
           title: Text(
             widget.listTitle ?? 'Study Session',
-            style: const TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.w700,
-            ),
+            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
           ),
           centerTitle: true,
         ),
         body: SafeArea(
-          child: Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(
-                  Icons.menu_book_rounded,
-                  size: 64,
-                  color: isDark ? AppColors.darkTextMuted : AppColors.lightTextMuted,
-                ),
-                const SizedBox(height: 16),
-                Text(
-                  'Bu Listede Henüz Kelime Yok',
-                  style: TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.w700,
-                    color: isDark
-                        ? AppColors.darkTextPrimary
-                        : AppColors.lightTextPrimary,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  'Bu listeye ilk kelimenizi ekleyerek çalışmaya başlayın.',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontSize: 14,
-                    color: isDark
-                        ? AppColors.darkTextSecondary
-                        : AppColors.lightTextSecondary,
-                  ),
-                ),
-              ],
-            ),
-          ),
+          child: StudyEmptyState(isDark: isDark),
         ),
       );
     }
@@ -304,699 +358,293 @@ class _StudySessionPageState extends ConsumerState<StudySessionPage>
     final hasPrev = hasWords && currentIndex > 0;
     final hasNext = hasWords && currentIndex < totalCount - 1;
 
-    return Scaffold(
-      resizeToAvoidBottomInset: false,
-      backgroundColor:
-          isDark ? AppColors.darkBackground : AppColors.lightBackground,
-      appBar: AppBar(
-        leadingWidth: 90,
-        leading: TextButton.icon(
-          style: TextButton.styleFrom(
-            padding: const EdgeInsets.only(left: 8),
-            foregroundColor: const Color(0xFF34C759), // iOS Green
+    return Focus(
+      focusNode: _pageFocusNode,
+      autofocus: true,
+      onKeyEvent: _onKeyEvent,
+      child: Scaffold(
+        resizeToAvoidBottomInset: false,
+        backgroundColor:
+            isDark ? AppColors.darkBackground : AppColors.lightBackground,
+        appBar: AppBar(
+          leadingWidth: 90,
+          leading: TextButton.icon(
+            style: TextButton.styleFrom(
+              padding: const EdgeInsets.only(left: 8),
+              foregroundColor: const Color(0xFF34C759),
+            ),
+            icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 18),
+            label: const Text(
+              'Back',
+              style: TextStyle(fontSize: 17, fontWeight: FontWeight.w500),
+            ),
+            onPressed: () => Navigator.of(context).pop(),
           ),
-          icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 18),
-          label: const Text(
-            'Back',
-            style: TextStyle(fontSize: 17, fontWeight: FontWeight.w500),
+          title: Text(
+            widget.listTitle ?? 'Study',
+            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
           ),
-          onPressed: () => Navigator.of(context).pop(),
-        ),
-        title: Text(
-          widget.listTitle ?? 'Study Session',
-          style: const TextStyle(
-            fontSize: 18,
-            fontWeight: FontWeight.w700,
-          ),
-        ),
-        centerTitle: true,
-        actions: [
-          // Add Word Button (Green)
-          IconButton(
-            focusNode: FocusNode(canRequestFocus: false, skipTraversal: true),
-            icon: const Icon(Icons.add_rounded, size: 26, color: Color(0xFF34C759)),
-            tooltip: 'Yeni Kelime Ekle',
-            onPressed: () async {
-              if (_isNavigating) return;
-              _isNavigating = true;
-              try {
-                final nav = Navigator.of(context);
-                final newWord = await nav.push<WordModel>(
-                  MaterialPageRoute(
-                    builder: (_) => AddEditWordPage(
-                      initialListName: widget.listTitle ?? currentWord?.listName,
-                    ),
-                  ),
-                );
-                if (!mounted) return;
-                if (newWord != null) {
-                  final allWords = ref.read(wordListControllerProvider).words;
-                  final freshListWords = (widget.listTitle != null &&
-                          widget.listTitle != 'All' &&
-                          widget.listTitle != 'Tümü')
-                      ? allWords.where((w) => w.listName == widget.listTitle).toList()
-                      : allWords;
+          centerTitle: true,
+          actions: [
+            // Add Word Button (Green)
+            IconButton(
+              icon: const Icon(Icons.add_rounded, size: 24, color: Color(0xFF34C759)),
+              tooltip: 'Add Word',
+              onPressed: _handleAddWord,
+            ),
 
-                  final targetIdx = freshListWords.indexWhere((w) =>
-                      w.id == newWord.id ||
-                      (w.en == newWord.en && w.tr == newWord.tr));
-                  final newIndex = targetIdx >= 0 ? targetIdx : (freshListWords.length - 1);
-                  studyNotifier.initWithWords(
-                    freshListWords,
-                    initialIndex: newIndex.clamp(
-                        0, freshListWords.isNotEmpty ? freshListWords.length - 1 : 0),
-                  );
-                }
-              } finally {
-                if (mounted) _isNavigating = false;
-              }
+            // Edit Word Button (Green)
+            IconButton(
+              icon: const Icon(Icons.edit_outlined, size: 21, color: Color(0xFF34C759)),
+              tooltip: 'Edit Word',
+              onPressed: hasWords && currentWord != null
+                  ? () => _handleEditCurrentWord(currentWord)
+                  : null,
+            ),
+
+            // Delete Button (Green)
+            IconButton(
+              icon: const Icon(Icons.delete_outline_rounded, size: 22, color: Color(0xFF34C759)),
+              tooltip: 'Delete',
+              onPressed: hasWords && currentWord != null
+                  ? () => _handleDeleteCurrentWord(currentWord)
+                  : null,
+            ),
+            const SizedBox(width: 4),
+          ],
+        ),
+        body: Actions(
+          actions: <Type, Action<Intent>>{
+            DirectionalFocusIntent: DoNothingAction(),
+            ActivateIntent: DoNothingAction(),
+            ButtonActivateIntent: DoNothingAction(),
+          },
+          child: GestureDetector(
+            behavior: HitTestBehavior.translucent,
+            onTap: () {
+              FocusScope.of(context).unfocus();
+              _pageFocusNode.requestFocus();
             },
-          ),
+            child: SafeArea(
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  final isDesktopLayout = constraints.maxWidth >= 680;
 
-          // Edit Button (Green)
-          IconButton(
-            focusNode: FocusNode(canRequestFocus: false, skipTraversal: true),
-            icon: const Icon(Icons.edit_outlined, size: 22, color: Color(0xFF34C759)),
-            tooltip: 'Edit',
-            onPressed: hasWords && currentWord != null
-                ? () async {
-                    if (_isNavigating) return;
-                    _isNavigating = true;
-                    try {
-                      final nav = Navigator.of(context);
-                      final updated = await nav.push<WordModel>(
-                        MaterialPageRoute(
-                          builder: (_) => AddEditWordPage(wordToEdit: currentWord),
-                        ),
-                      );
-                      if (!mounted) return;
-                      if (updated != null) {
-                        final allWords = ref.read(wordListControllerProvider).words;
-                        final freshListWords = (widget.listTitle != null &&
-                                widget.listTitle != 'All' &&
-                                widget.listTitle != 'Tümü')
-                            ? allWords.where((w) => w.listName == widget.listTitle).toList()
-                            : allWords;
+                  if (isDesktopLayout) {
+                    // Desktop / Web Two-Column Layout
+                    return ResponsiveContent(
+                      maxWidth: 1100,
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(24, 12, 24, 20),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            // Left Column: Solo Example Box
+                            Expanded(
+                              flex: 5,
+                              child: StudyExampleBox(
+                                isDark: isDark,
+                                hasWords: hasWords,
+                                currentWord: currentWord,
+                                scrollController: _exampleScrollController,
+                              ),
+                            ),
 
-                        if (freshListWords.isEmpty) {
-                          nav.pop();
-                        } else {
-                          final targetIdx = freshListWords.indexWhere((w) =>
-                              w.id == updated.id ||
-                              (w.en == updated.en && w.tr == updated.tr));
-                          final nextIndex = targetIdx >= 0
-                              ? targetIdx
-                              : currentIndex.clamp(0, freshListWords.length - 1);
-                          studyNotifier.initWithWords(freshListWords, initialIndex: nextIndex);
-                        }
-                      }
-                    } finally {
-                      if (mounted) _isNavigating = false;
-                    }
-                  }
-                : null,
-          ),
+                            const SizedBox(width: 24),
 
-          // Delete Button (Green)
-          IconButton(
-            focusNode: FocusNode(canRequestFocus: false, skipTraversal: true),
-            icon: const Icon(Icons.delete_outline_rounded, size: 22, color: Color(0xFF34C759)),
-            tooltip: 'Delete',
-            onPressed: hasWords && currentWord != null
-                ? () => _handleDeleteCurrentWord(currentWord)
-                : null,
-          ),
-          const SizedBox(width: 4),
-        ],
-      ),
-      body: GestureDetector(
-        behavior: HitTestBehavior.translucent,
-        onTap: () => FocusScope.of(context).unfocus(),
-        child: SafeArea(
-          child: LayoutBuilder(
-            builder: (context, constraints) {
-              final isDesktopLayout = constraints.maxWidth >= 680;
+                            // Right Column: Search, Synonyms, Centered Word Card & Controls
+                            Expanded(
+                              flex: 5,
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.stretch,
+                                children: [
+                                  StudySearchBar(
+                                    isDark: isDark,
+                                    controller: _searchController,
+                                    focusNode: _searchFocusNode,
+                                    onChanged: (val) {
+                                      studyNotifier.onSearchChanged(val);
+                                      setState(() {});
+                                    },
+                                    onClear: () {
+                                      _searchController.clear();
+                                      studyNotifier.onSearchChanged('');
+                                      setState(() {});
+                                    },
+                                  ),
+                                  const SizedBox(height: 10),
+                                  StudySynonymsBar(
+                                    isDark: isDark,
+                                    badges: studyState.synonymBadges,
+                                    isDesktop: true,
+                                    scrollController: _desktopSynonymsScrollController,
+                                    onBeforeOpenModal: () {
+                                      _searchFocusNode.unfocus();
+                                      FocusScope.of(context).unfocus();
+                                    },
+                                    onAfterCloseModal: () {
+                                      if (mounted) {
+                                        _searchFocusNode.unfocus();
+                                        _pageFocusNode.requestFocus();
+                                      }
+                                    },
+                                  ),
 
-              if (isDesktopLayout) {
-                // Desktop / Web Two-Column Layout (Left: Example solo, Right: Search, Synonyms, Card, Controls)
-                return ResponsiveContent(
-                  maxWidth: 1100,
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(24, 12, 24, 20),
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        // Left Column: Example Box (Solo)
-                        Expanded(
-                          flex: 5,
-                          child: _buildExampleContainer(
-                              isDark, hasWords, currentWord),
-                        ),
-
-                        const SizedBox(width: 24),
-
-                        // Right Column: Search & Synonyms (Top), Word Card & Controls (Centered)
-                        Expanded(
-                          flex: 5,
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.stretch,
-                            children: [
-                              // Top: Search Bar & Synonym Badges
-                              _buildSearchBar(isDark, studyNotifier),
-                              const SizedBox(height: 10),
-                              _buildSynonymBadges(isDark, studyState),
-
-                              // Center remaining space: Word Card, Index, Slider, Control Buttons
-                              Expanded(
-                                child: Center(
-                                  child: SingleChildScrollView(
-                                    physics: const BouncingScrollPhysics(),
-                                    child: Column(
-                                      mainAxisSize: MainAxisSize.min,
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.stretch,
-                                      children: [
-                                        SizedBox(
-                                          height: 220,
-                                          child: _buildWordCardFlip(
-                                              hasWords,
-                                              currentWord,
-                                              studyNotifier),
+                                  // Centered Card & Controls Area
+                                  Expanded(
+                                    child: Center(
+                                      child: SingleChildScrollView(
+                                        physics: const BouncingScrollPhysics(),
+                                        child: Column(
+                                          mainAxisSize: MainAxisSize.min,
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.stretch,
+                                          children: [
+                                            SizedBox(
+                                              height: 220,
+                                              child: StudyWordCardFlip(
+                                                hasWords: hasWords,
+                                                currentWord: currentWord,
+                                                flipAnimation: _flipAnimation,
+                                                onFlip: studyNotifier.flip,
+                                              ),
+                                            ),
+                                            const SizedBox(height: 16),
+                                            StudyIndexLabel(
+                                              isDark: isDark,
+                                              hasWords: hasWords,
+                                              currentIndex: currentIndex,
+                                              totalCount: totalCount,
+                                            ),
+                                            const SizedBox(height: 8),
+                                            StudyProgressSlider(
+                                              isDark: isDark,
+                                              hasWords: hasWords,
+                                              currentIndex: currentIndex,
+                                              totalCount: totalCount,
+                                              onSeek: studyNotifier.seekTo,
+                                            ),
+                                            const SizedBox(height: 16),
+                                            StudyControlButtons(
+                                              isDark: isDark,
+                                              hasWords: hasWords,
+                                              hasPrev: hasPrev,
+                                              hasNext: hasNext,
+                                              isPlayingTts: studyState.isPlayingTts,
+                                              onPrev: studyNotifier.prev,
+                                              onRandom: studyNotifier.toggleRandom,
+                                              onTts: studyNotifier.speakCurrent,
+                                              onNext: studyNotifier.next,
+                                            ),
+                                          ],
                                         ),
-                                        const SizedBox(height: 16),
-                                        _buildIndexLabel(isDark, hasWords,
-                                            currentIndex, totalCount),
-                                        const SizedBox(height: 8),
-                                        _buildProgressSlider(isDark, hasWords,
-                                            currentIndex, totalCount,
-                                            studyNotifier),
-                                        const SizedBox(height: 16),
-                                        _buildControlButtons(
-                                            isDark,
-                                            hasWords,
-                                            hasPrev,
-                                            hasNext,
-                                            studyState,
-                                            studyNotifier),
-                                      ],
+                                      ),
                                     ),
                                   ),
-                                ),
+                                ],
                               ),
-                            ],
-                          ),
+                            ),
+                          ],
                         ),
-                      ],
-                    ),
-                  ),
-                );
-              }
-
-              // Mobile Layout (Single Column Stack)
-              return ResponsiveContent(
-                maxWidth: 680,
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 20),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      _buildSearchBar(isDark, studyNotifier),
-                      const SizedBox(height: 6),
-                      _buildSynonymBadges(isDark, studyState),
-                      const SizedBox(height: 10),
-                      Expanded(
-                        flex: 5,
-                        child: _buildExampleContainer(
-                            isDark, hasWords, currentWord),
                       ),
-                      const SizedBox(height: 14),
-                      Expanded(
-                        flex: 5,
-                        child: _buildWordCardFlip(
-                            hasWords, currentWord, studyNotifier),
-                      ),
-                      const SizedBox(height: 10),
-                      _buildIndexLabel(
-                          isDark, hasWords, currentIndex, totalCount),
-                      const SizedBox(height: 6),
-                      _buildProgressSlider(isDark, hasWords, currentIndex,
-                          totalCount, studyNotifier),
-                      const SizedBox(height: 8),
-                      Padding(
-                        padding: const EdgeInsets.only(bottom: 20),
-                        child: _buildControlButtons(isDark, hasWords, hasPrev,
-                            hasNext, studyState, studyNotifier),
-                      ),
-                    ],
-                  ),
-                ),
-              );
-            },
-          ),
-        ),
-      ),
-    );
-  }
+                    );
+                  }
 
-  Widget _buildSearchBar(bool isDark, StudyController studyNotifier) {
-    return Container(
-      height: 42,
-      decoration: BoxDecoration(
-        color: isDark ? AppColors.darkSurface : const Color(0xFFE9E9EB),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: TextField(
-        controller: _searchController,
-        onTapOutside: (event) {
-          FocusScope.of(context).unfocus();
-        },
-        onChanged: (val) {
-          studyNotifier.onSearchChanged(val);
-          setState(() {});
-        },
-        decoration: InputDecoration(
-          hintText: 'Search for a word...',
-          hintStyle: TextStyle(
-            fontSize: 15,
-            color: isDark ? AppColors.darkTextMuted : const Color(0xFF8E8E93),
-          ),
-          prefixIcon: Icon(
-            Icons.search_rounded,
-            size: 20,
-            color: isDark ? AppColors.darkTextMuted : const Color(0xFF8E8E93),
-          ),
-          suffixIcon: _searchController.text.isNotEmpty
-              ? IconButton(
-                  focusNode: FocusNode(canRequestFocus: false, skipTraversal: true),
-                  icon: const Icon(Icons.clear_rounded, size: 18),
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
-                  color: isDark ? AppColors.darkTextMuted : const Color(0xFF8E8E93),
-                  onPressed: () {
-                    _searchController.clear();
-                    studyNotifier.onSearchChanged('');
-                    setState(() {});
-                  },
-                )
-              : null,
-          border: InputBorder.none,
-          contentPadding: const EdgeInsets.symmetric(vertical: 10),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildSynonymBadges(bool isDark, StudyState studyState) {
-    if (studyState.synonymBadges.isEmpty) {
-      return Container(
-        height: 38,
-        width: double.infinity,
-        decoration: BoxDecoration(
-          color: isDark ? const Color(0xFF2C2C2E) : const Color(0xFFE9E9EB),
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: Center(
-          child: Text(
-            'No synonyms available for this word.',
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              fontSize: 13,
-              fontWeight: FontWeight.w500,
-              color: isDark ? AppColors.darkTextMuted : const Color(0xFF8E8E93),
-            ),
-          ),
-        ),
-      );
-    }
-
-    return ConstrainedBox(
-      constraints: const BoxConstraints(maxHeight: 90),
-      child: Scrollbar(
-        controller: _synonymsScrollController,
-        thumbVisibility: false,
-        radius: const Radius.circular(6),
-        child: SingleChildScrollView(
-          controller: _synonymsScrollController,
-          physics: const BouncingScrollPhysics(),
-          child: Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: studyState.synonymBadges.map((badge) {
-              return Container(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: badge.gradient,
-                    begin: Alignment.centerLeft,
-                    end: Alignment.centerRight,
-                  ),
-                  borderRadius: BorderRadius.circular(10),
-                  boxShadow: [
-                    BoxShadow(
-                      color: badge.gradient.first.withValues(alpha: 0.25),
-                      blurRadius: 5,
-                      offset: const Offset(0, 2),
-                    ),
-                  ],
-                ),
-                child: Material(
-                  color: Colors.transparent,
-                  child: InkWell(
-                    canRequestFocus: false,
-                    focusNode: FocusNode(canRequestFocus: false, skipTraversal: true),
-                    borderRadius: BorderRadius.circular(10),
-                    onTap: () {
-                      showWordDetailModal(context, word: badge.word);
-                    },
+                  // Mobile Layout (Single Column Stack)
+                  return ResponsiveContent(
+                    maxWidth: 680,
                     child: Padding(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 14, vertical: 7),
-                      child: Text(
-                        badge.word.en,
-                        style: const TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
-                          color: Colors.white,
-                        ),
+                      padding: const EdgeInsets.symmetric(horizontal: 20),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          StudySearchBar(
+                            isDark: isDark,
+                            controller: _searchController,
+                            focusNode: _searchFocusNode,
+                            onChanged: (val) {
+                              studyNotifier.onSearchChanged(val);
+                              setState(() {});
+                            },
+                            onClear: () {
+                              _searchController.clear();
+                              studyNotifier.onSearchChanged('');
+                              setState(() {});
+                            },
+                          ),
+                          const SizedBox(height: 6),
+                          StudySynonymsBar(
+                            isDark: isDark,
+                            badges: studyState.synonymBadges,
+                            isDesktop: false,
+                            scrollController: _mobileSynonymsScrollController,
+                            onBeforeOpenModal: () {
+                              _searchFocusNode.unfocus();
+                              FocusScope.of(context).unfocus();
+                            },
+                            onAfterCloseModal: () {
+                              if (mounted) {
+                                _searchFocusNode.unfocus();
+                                _pageFocusNode.requestFocus();
+                              }
+                            },
+                          ),
+                          const SizedBox(height: 10),
+                          Expanded(
+                            flex: 5,
+                            child: StudyExampleBox(
+                              isDark: isDark,
+                              hasWords: hasWords,
+                              currentWord: currentWord,
+                              scrollController: _exampleScrollController,
+                            ),
+                          ),
+                          const SizedBox(height: 14),
+                          Expanded(
+                            flex: 5,
+                            child: StudyWordCardFlip(
+                              hasWords: hasWords,
+                              currentWord: currentWord,
+                              flipAnimation: _flipAnimation,
+                              onFlip: studyNotifier.flip,
+                            ),
+                          ),
+                          const SizedBox(height: 10),
+                          StudyIndexLabel(
+                            isDark: isDark,
+                            hasWords: hasWords,
+                            currentIndex: currentIndex,
+                            totalCount: totalCount,
+                          ),
+                          const SizedBox(height: 6),
+                          StudyProgressSlider(
+                            isDark: isDark,
+                            hasWords: hasWords,
+                            currentIndex: currentIndex,
+                            totalCount: totalCount,
+                            onSeek: studyNotifier.seekTo,
+                          ),
+                          const SizedBox(height: 8),
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 20),
+                            child: StudyControlButtons(
+                              isDark: isDark,
+                              hasWords: hasWords,
+                              hasPrev: hasPrev,
+                              hasNext: hasNext,
+                              isPlayingTts: studyState.isPlayingTts,
+                              onPrev: studyNotifier.prev,
+                              onRandom: studyNotifier.toggleRandom,
+                              onTts: studyNotifier.speakCurrent,
+                              onNext: studyNotifier.next,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
-                  ),
-                ),
-              );
-            }).toList(),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildExampleContainer(
-      bool isDark, bool hasWords, WordModel? currentWord) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 20),
-      decoration: BoxDecoration(
-        color: isDark ? AppColors.darkSurface : const Color(0xFFF2F2F7),
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(
-          color: isDark ? AppColors.darkBorder : const Color(0xFFE5E5EA),
-          width: 1.5,
-        ),
-      ),
-      child: Scrollbar(
-        controller: _exampleScrollController,
-        thumbVisibility: true,
-        radius: const Radius.circular(8),
-        child: SingleChildScrollView(
-          controller: _exampleScrollController,
-          physics: const BouncingScrollPhysics(),
-          child: Padding(
-            padding: const EdgeInsets.only(right: 6),
-            child: SelectableText(
-              hasWords
-                  ? ((currentWord?.example != null &&
-                          currentWord!.example!.trim().isNotEmpty)
-                      ? currentWord.example!
-                      : 'No example sentence available.')
-                  : 'Aradığınız kelime bulunamadı.',
-              textAlign: hasWords &&
-                      (currentWord?.example != null &&
-                          currentWord!.example!.trim().isNotEmpty)
-                  ? TextAlign.start
-                  : TextAlign.center,
-              style: TextStyle(
-                fontSize: 15.5,
-                fontStyle: FontStyle.italic,
-                fontWeight: FontWeight.w400,
-                height: 1.55,
-                color: hasWords &&
-                        (currentWord?.example != null &&
-                            currentWord!.example!.trim().isNotEmpty)
-                    ? (isDark
-                        ? AppColors.darkTextPrimary
-                        : Colors.black87)
-                    : (isDark
-                        ? AppColors.darkTextMuted
-                        : const Color(0xFF8E8E93)),
+                  );
+                },
               ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildWordCardFlip(
-      bool hasWords, WordModel? currentWord, StudyController studyNotifier) {
-    return GestureDetector(
-      onTap: hasWords
-          ? () {
-              HapticFeedback.selectionClick();
-              studyNotifier.flip();
-            }
-          : null,
-      child: AnimatedBuilder(
-        animation: _flipAnimation,
-        builder: (context, child) {
-          final angle = _flipAnimation.value * pi;
-          final isBackVisible = angle >= (pi / 2);
-
-          final cardText = hasWords
-              ? (isBackVisible ? currentWord!.tr : currentWord!.en)
-              : (isBackVisible ? 'Sonuç Bulunamadı' : 'No Results');
-
-          return Transform(
-            transform: Matrix4.identity()
-              ..setEntry(3, 2, 0.0012)
-              ..rotateY(angle),
-            alignment: Alignment.center,
-            child: isBackVisible
-                ? Transform(
-                    transform: Matrix4.identity()..rotateY(pi),
-                    alignment: Alignment.center,
-                    child: _buildWordCard(
-                      text: cardText,
-                      isPink: true,
-                    ),
-                  )
-                : _buildWordCard(
-                    text: cardText,
-                    isPink: false,
-                  ),
-          );
-        },
-      ),
-    );
-  }
-
-  Widget _buildIndexLabel(
-      bool isDark, bool hasWords, int currentIndex, int totalCount) {
-    return Center(
-      child: Text(
-        hasWords ? '${currentIndex + 1}/$totalCount' : '0/0',
-        style: TextStyle(
-          fontSize: 16,
-          fontWeight: FontWeight.w700,
-          color: isDark
-              ? AppColors.darkTextSecondary
-              : const Color(0xFF8E8E93),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildProgressSlider(bool isDark, bool hasWords, int currentIndex,
-      int totalCount, StudyController studyNotifier) {
-    return Focus(
-      canRequestFocus: false,
-      skipTraversal: true,
-      child: SliderTheme(
-        data: SliderTheme.of(context).copyWith(
-          activeTrackColor: const Color(0xFFE5E5EA),
-          inactiveTrackColor:
-              isDark ? AppColors.darkBorder : const Color(0xFFE5E5EA),
-          disabledActiveTrackColor:
-              isDark ? AppColors.darkBorder : const Color(0xFFE5E5EA),
-          disabledInactiveTrackColor:
-              isDark ? AppColors.darkBorder : const Color(0xFFE5E5EA),
-          thumbColor: Colors.white,
-          disabledThumbColor: Colors.white.withValues(alpha: 0.6),
-          overlayColor: Colors.transparent,
-          trackHeight: 4,
-          thumbShape: const RoundSliderThumbShape(
-            enabledThumbRadius: 10,
-            disabledThumbRadius: 10,
-            elevation: 3,
-          ),
-        ),
-        child: Slider(
-          value: (hasWords && totalCount > 1)
-              ? currentIndex.toDouble().clamp(0.0, (totalCount - 1).toDouble())
-              : 0.0,
-          min: 0.0,
-          max: (hasWords && totalCount > 1)
-              ? (totalCount - 1).toDouble()
-              : 1.0,
-          divisions: (hasWords && totalCount > 1) ? (totalCount - 1) : 1,
-          onChanged: (hasWords && totalCount > 1)
-              ? (val) {
-                  studyNotifier.seekTo(val.round());
-                }
-              : null,
-        ),
-      ),
-    );
-  }
-
-  Widget _buildControlButtons(
-    bool isDark,
-    bool hasWords,
-    bool hasPrev,
-    bool hasNext,
-    StudyState studyState,
-    StudyController studyNotifier,
-  ) {
-    return Row(
-      children: [
-        // [ ← Prev ]
-        Expanded(
-          child: _buildActionButton(
-            text: '← Prev',
-            backgroundColor:
-                isDark ? AppColors.darkSurface : const Color(0xFFF2F2F7),
-            textColor: isDark ? Colors.white : Colors.black,
-            isEnabled: hasPrev,
-            onTap: () {
-              HapticFeedback.lightImpact();
-              studyNotifier.prev();
-            },
-          ),
-        ),
-        const SizedBox(width: 10),
-
-        // [ Random ] (Vibrant Orange)
-        Expanded(
-          child: _buildActionButton(
-            text: 'Random',
-            backgroundColor: const Color(0xFFFF9500),
-            textColor: Colors.white,
-            isBold: true,
-            isEnabled: hasWords,
-            onTap: () {
-              HapticFeedback.mediumImpact();
-              studyNotifier.toggleRandom();
-            },
-          ),
-        ),
-        const SizedBox(width: 10),
-
-        // [ 🔊 ] (Vibrant Blue Speaker)
-        Expanded(
-          child: _buildActionButton(
-            icon: studyState.isPlayingTts
-                ? Icons.graphic_eq_rounded
-                : Icons.volume_up_rounded,
-            backgroundColor: const Color(0xFF007AFF),
-            textColor: Colors.white,
-            isEnabled: hasWords,
-            onTap: () {
-              HapticFeedback.lightImpact();
-              studyNotifier.speakCurrent();
-            },
-          ),
-        ),
-        const SizedBox(width: 10),
-
-        // [ Next → ]
-        Expanded(
-          child: _buildActionButton(
-            text: 'Next →',
-            backgroundColor:
-                isDark ? AppColors.darkSurface : const Color(0xFFF2F2F7),
-            textColor: isDark ? Colors.white : Colors.black,
-            isEnabled: hasNext,
-            onTap: () {
-              HapticFeedback.lightImpact();
-              studyNotifier.next();
-            },
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildWordCard({
-    required String text,
-    required bool isPink,
-  }) {
-    // Turquoise: #12C6B2 / Pink: #E3719D matching Swift WordCardView
-    final bgColor = isPink
-        ? const Color(0xFFE3719D)
-        : const Color(0xFF12C6B2);
-
-    return Container(
-      width: double.infinity,
-      decoration: BoxDecoration(
-        color: bgColor,
-        borderRadius: BorderRadius.circular(24),
-        boxShadow: [
-          BoxShadow(
-            color: bgColor.withValues(alpha: 0.35),
-            blurRadius: 18,
-            offset: const Offset(0, 8),
-          ),
-        ],
-      ),
-      child: Center(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-          child: Text(
-            text,
-            textAlign: TextAlign.center,
-            style: const TextStyle(
-              fontSize: 28,
-              fontWeight: FontWeight.w800,
-              color: Colors.black,
-              letterSpacing: 0.2,
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildActionButton({
-    String? text,
-    IconData? icon,
-    required Color backgroundColor,
-    required Color textColor,
-    bool isBold = false,
-    bool isEnabled = true,
-    required VoidCallback onTap,
-  }) {
-    return AnimatedOpacity(
-      duration: const Duration(milliseconds: 150),
-      opacity: isEnabled ? 1.0 : 0.35,
-      child: SizedBox(
-        height: 52,
-        child: Material(
-          color: backgroundColor,
-          borderRadius: BorderRadius.circular(16),
-          child: InkWell(
-            canRequestFocus: false,
-            focusNode: FocusNode(canRequestFocus: false, skipTraversal: true),
-            borderRadius: BorderRadius.circular(16),
-            onTap: isEnabled ? onTap : null,
-            child: Center(
-              child: icon != null
-                  ? Icon(icon, color: textColor, size: 24)
-                  : Text(
-                      text ?? '',
-                      style: TextStyle(
-                        fontSize: 15,
-                        fontWeight: isBold ? FontWeight.w700 : FontWeight.w600,
-                        color: textColor,
-                      ),
-                    ),
             ),
           ),
         ),
