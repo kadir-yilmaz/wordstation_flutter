@@ -31,11 +31,24 @@ class DailyQuizPlanModel {
   int get totalDays =>
       totalWords > 0 ? (totalWords / dailyCount).ceil() : 0;
 
+  int get completedDays =>
+      dailyCount > 0 ? (currentPointer / dailyCount).floor() : 0;
+
   int get currentDay {
     if (totalWords == 0) return 0;
     if (isPlanFinished) return totalDays;
     final day = (currentPointer / dailyCount).floor() + 1;
     return day.clamp(1, totalDays > 0 ? totalDays : 1);
+  }
+
+  /// Aktif gün durumuna göre (bugün çözüldüyse tamamlanan günü, çözülmediyse sıradaki günü) döner
+  int displayDay(String todayStr) {
+    if (totalWords == 0) return 0;
+    if (isPlanFinished) return totalDays;
+    if (isCompletedToday(todayStr) && completedDays > 0) {
+      return completedDays.clamp(1, totalDays);
+    }
+    return currentDay;
   }
 
   int get nextBatchCount => remainingWords.clamp(0, dailyCount);

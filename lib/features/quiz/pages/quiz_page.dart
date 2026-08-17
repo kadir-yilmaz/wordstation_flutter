@@ -1093,7 +1093,9 @@ class _QuizPageState extends ConsumerState<QuizPage> {
                       crossAxisAlignment: CrossAxisAlignment.end,
                       children: [
                         Text(
-                          'Gün ${plan.currentDay} / ${plan.totalDays}',
+                          isCompletedToday
+                              ? 'Gün ${plan.completedDays > 0 ? plan.completedDays : 1} / ${plan.totalDays}'
+                              : 'Gün ${plan.currentDay} / ${plan.totalDays}',
                           style: TextStyle(
                             fontSize: 22,
                             fontWeight: FontWeight.w800,
@@ -1245,9 +1247,9 @@ class _QuizPageState extends ConsumerState<QuizPage> {
                   children: [
                     const Icon(Icons.check_circle_rounded, size: 48, color: Colors.white),
                     const SizedBox(height: 10),
-                    const Text(
-                      'Bugünkü Test Tamamlandı!',
-                      style: TextStyle(
+                    Text(
+                      'Bugünkü Test (Gün ${plan.completedDays > 0 ? plan.completedDays : 1}) Tamamlandı!',
+                      style: const TextStyle(
                         fontSize: 19,
                         fontWeight: FontWeight.w800,
                         color: Colors.white,
@@ -1255,7 +1257,7 @@ class _QuizPageState extends ConsumerState<QuizPage> {
                     ),
                     const SizedBox(height: 6),
                     Text(
-                      'Günün kelimeleri başarıyla pekiştirildi. Aşağıdaki butondan veya yukarıdaki ilerleme kartından geçmiş quizleri tekrar tekrar çalışabilirsiniz.',
+                      'Günün ${plan.dailyCount} kelimesini başarıyla tamamladınız. Yarın Gün ${plan.currentDay} testi açılacaktır.',
                       textAlign: TextAlign.center,
                       style: TextStyle(fontSize: 13, color: Colors.white.withValues(alpha: 0.95)),
                     ),
