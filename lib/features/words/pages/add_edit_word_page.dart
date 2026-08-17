@@ -26,7 +26,7 @@ class _AddEditWordPageState extends ConsumerState<AddEditWordPage> {
   late TextEditingController _enController;
   late TextEditingController _trController;
   late TextEditingController _exampleController;
-  late TextEditingController _listNameController;
+  late String _selectedListName;
   bool _isLoading = false;
 
   bool get _isEditing => widget.wordToEdit != null;
@@ -38,11 +38,9 @@ class _AddEditWordPageState extends ConsumerState<AddEditWordPage> {
     _trController = TextEditingController(text: widget.wordToEdit?.tr ?? '');
     _exampleController =
         TextEditingController(text: widget.wordToEdit?.example ?? '');
-    _listNameController = TextEditingController(
-      text: widget.wordToEdit?.listName ??
-          widget.initialListName ??
-          'General',
-    );
+    _selectedListName = widget.wordToEdit?.listName ??
+        widget.initialListName ??
+        'General';
   }
 
   @override
@@ -50,7 +48,6 @@ class _AddEditWordPageState extends ConsumerState<AddEditWordPage> {
     _enController.dispose();
     _trController.dispose();
     _exampleController.dispose();
-    _listNameController.dispose();
     super.dispose();
   }
 
@@ -65,9 +62,9 @@ class _AddEditWordPageState extends ConsumerState<AddEditWordPage> {
       en: _enController.text.trim(),
       tr: _trController.text.trim(),
       example: _exampleController.text.trim(),
-      listName: _listNameController.text.trim().isEmpty
+      listName: _selectedListName.trim().isEmpty
           ? 'General'
-          : _listNameController.text.trim(),
+          : _selectedListName.trim(),
       userId: widget.wordToEdit?.userId,
     );
 
@@ -122,13 +119,175 @@ class _AddEditWordPageState extends ConsumerState<AddEditWordPage> {
     }
   }
 
+  Future<String?> _showCreateListDialog(BuildContext context, bool isDark) async {
+    final controller = TextEditingController();
+    return showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+        backgroundColor: isDark ? AppColors.darkSurface : Colors.white,
+        title: const Text('Yeni Liste Oluştur'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          textCapitalization: TextCapitalization.words,
+          decoration: InputDecoration(
+            hintText: 'Liste Adı (Örn: B2, Phrasal Verbs)',
+            hintStyle: TextStyle(
+              color: isDark ? AppColors.darkTextMuted : AppColors.lightTextMuted,
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('İptal'),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.turquoise,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            ),
+            onPressed: () {
+              final text = controller.text.trim();
+              Navigator.of(ctx).pop(text.isNotEmpty ? text : null);
+            },
+            child: const Text('Ekle'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildListDropdown(bool isDark, List<String> availableLists) {
+    final options = <String>[...availableLists];
+    if (!options.contains(_selectedListName) && _selectedListName.trim().isNotEmpty) {
+      options.insert(0, _selectedListName);
+    }
+    if (options.isEmpty) {
+      options.add('General');
+    }
+
+    final selectedValue = options.contains(_selectedListName)
+        ? _selectedListName
+        : options.first;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Liste / Kategori',
+          style: TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.w600,
+            color: isDark
+                ? AppColors.darkTextPrimary
+                : AppColors.lightTextPrimary,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Container(
+          height: 52,
+          padding: const EdgeInsets.symmetric(horizontal: 14),
+          decoration: BoxDecoration(
+            color: isDark ? AppColors.darkSurface : AppColors.lightSurface,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(
+              color: isDark ? AppColors.darkBorder : AppColors.lightBorder,
+              width: 1,
+            ),
+          ),
+          child: DropdownButtonHideUnderline(
+            child: DropdownButton<String>(
+              value: selectedValue,
+              isExpanded: true,
+              icon: Icon(
+                Icons.keyboard_arrow_down_rounded,
+                color: isDark
+                    ? AppColors.darkTextSecondary
+                    : AppColors.lightTextSecondary,
+              ),
+              dropdownColor: isDark ? AppColors.darkSurface : Colors.white,
+              borderRadius: BorderRadius.circular(14),
+              items: [
+                ...options.map((name) => DropdownMenuItem<String>(
+                      value: name,
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.folder_rounded,
+                            size: 18,
+                            color: isDark
+                                ? AppColors.turquoise
+                                : const Color(0xFF12C6B2),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
+                              name,
+                              style: TextStyle(
+                                fontSize: 15,
+                                fontWeight: FontWeight.w500,
+                                color: isDark
+                                    ? AppColors.darkTextPrimary
+                                    : AppColors.lightTextPrimary,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    )),
+                DropdownMenuItem<String>(
+                  value: '__CREATE_NEW__',
+                  child: Row(
+                    children: [
+                      const Icon(
+                        Icons.add_circle_outline_rounded,
+                        size: 18,
+                        color: Color(0xFF34C759),
+                      ),
+                      const SizedBox(width: 10),
+                      const Text(
+                        '+ Yeni Liste Oluştur...',
+                        style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w600,
+                          color: Color(0xFF34C759),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+              onChanged: (val) async {
+                if (val == '__CREATE_NEW__') {
+                  final newName = await _showCreateListDialog(context, isDark);
+                  if (newName != null && newName.trim().isNotEmpty) {
+                    setState(() {
+                      _selectedListName = newName.trim();
+                    });
+                  }
+                } else if (val != null) {
+                  setState(() {
+                    _selectedListName = val;
+                  });
+                }
+              },
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final listNames = ref
         .watch(wordListControllerProvider)
         .listNames
-        .where((l) => l != 'Tümü')
+        .where((l) => l != 'Tümü' && l != 'All')
         .toList();
 
     return Scaffold(
@@ -162,7 +321,11 @@ class _AddEditWordPageState extends ConsumerState<AddEditWordPage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  // English Word
+                  // 1. Liste / Kategori Dropdown (En Üstte)
+                  _buildListDropdown(isDark, listNames),
+                  const SizedBox(height: 18),
+
+                  // 2. İngilizce Kelime (Word)
                   CustomTextField(
                     controller: _enController,
                     label: 'İngilizce Kelime (Word)',
@@ -177,7 +340,7 @@ class _AddEditWordPageState extends ConsumerState<AddEditWordPage> {
                   ),
                   const SizedBox(height: 18),
 
-                  // Turkish Meaning
+                  // 3. Türkçe Anlamı (Meaning)
                   CustomTextField(
                     controller: _trController,
                     label: 'Türkçe Anlamı (Meaning)',
@@ -192,63 +355,18 @@ class _AddEditWordPageState extends ConsumerState<AddEditWordPage> {
                   ),
                   const SizedBox(height: 18),
 
-                  // Example Sentence
+                  // 4. Örnek Cümle (Geri Kalan Alan - Tırnak İşareti Yok!)
                   CustomTextField(
                     controller: _exampleController,
                     label: 'Örnek Cümle (İsteğe bağlı)',
                     hintText: 'Örn: Smartphones have become ubiquitous in daily life.',
-                    prefixIcon: Icons.format_quote_rounded,
-                    minLines: 5,
-                    maxLines: 8,
+                    prefixIcon: null, // Tırnak işareti kaldırıldı, tam genişlik
+                    minLines: 6,
+                    maxLines: 10,
                   ),
-                  const SizedBox(height: 18),
+                  const SizedBox(height: 28),
 
-                  // List / Category Name
-                  CustomTextField(
-                    controller: _listNameController,
-                    label: 'Liste / Kategori',
-                    hintText: 'Örn: A1, B2, TOEFL, General',
-                    prefixIcon: Icons.folder_open_rounded,
-                    textInputAction: TextInputAction.done,
-                    onSubmitted: (_) => _handleSave(),
-                  ),
-
-                  // Quick Suggestion Chips for Lists
-                  if (listNames.isNotEmpty) ...[
-                    const SizedBox(height: 10),
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 6,
-                      children: listNames.map((name) {
-                        return ActionChip(
-                          label: Text(name),
-                          labelStyle: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                            color: _listNameController.text == name
-                                ? Colors.white
-                                : (isDark
-                                    ? AppColors.darkTextPrimary
-                                    : AppColors.lightTextPrimary),
-                          ),
-                          backgroundColor: _listNameController.text == name
-                              ? AppColors.turquoise
-                              : (isDark
-                                  ? AppColors.darkSurface
-                                  : Colors.grey.shade200),
-                          onPressed: () {
-                            setState(() {
-                              _listNameController.text = name;
-                            });
-                          },
-                        );
-                      }).toList(),
-                    ),
-                  ],
-
-                  const SizedBox(height: 32),
-
-                  // Save Button
+                  // 5. Kaydet Butonu
                   CustomButton(
                     text: _isEditing ? 'Değişiklikleri Kaydet' : 'Kelimeyi Ekle',
                     onPressed: _handleSave,

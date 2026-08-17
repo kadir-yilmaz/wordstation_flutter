@@ -72,6 +72,7 @@ jobs:
           echo "Windows Versiyonu: $VERSION (Build: $BUILD_NUM)"
 
       - name: Build Windows Application (Release)
+        shell: bash
         env:
           DESKTOP_CLIENT_SECRET: ${{ secrets.DESKTOP_CLIENT_SECRET }}
         run: |
