@@ -50,7 +50,8 @@ class WordStationApp extends ConsumerWidget {
       scrollBehavior: const AppScrollBehavior(),
       themeAnimationDuration: const Duration(milliseconds: 300),
       themeAnimationCurve: Curves.easeInOutCubic,
-      home: const SplashPage(),
+      home: const AuthGate(),
     );
   }
 }
+

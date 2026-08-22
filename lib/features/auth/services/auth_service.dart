@@ -11,6 +11,7 @@ import 'package:google_sign_in/google_sign_in.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../../core/constants/api_constants.dart';
 import '../../../core/network/api_client.dart';
+import '../../../core/network/dio_error_handler.dart';
 import '../../../core/storage/secure_storage_service.dart';
 import '../../../core/utils/jwt_decoder.dart';
 import '../models/login_request.dart';
@@ -255,17 +256,18 @@ class AuthService {
     }
   }
 
-  // Manual Token Refresh (used by Auth Inspector page & manual triggers)
-  Future<TokenResponse> refreshTokenManual() async {
+  // Silent Session Recovery (Web'de F5 sonrası HttpOnly Cookie ile oturumu sessizce kurtarır)
+  Future<UserModel?> trySilentRefresh() async {
     try {
       final currentToken = await storage.getAccessToken();
       final refreshToken = await storage.getRefreshToken();
 
-      if (refreshToken == null || refreshToken.isEmpty) {
-        throw Exception('Refresh token bulunamadı.');
+      // Native ortamda kayıtlı refresh token yoksa denemeye gerek yok
+      if (!kIsWeb && (refreshToken == null || refreshToken.isEmpty)) {
+        return null;
       }
 
-      log('🔵 [AuthService.refreshTokenManual] Requesting token refresh...');
+      log('🔵 [AuthService.trySilentRefresh] Attempting silent session recovery (kIsWeb=$kIsWeb)...');
       final refreshDio = Dio(
         BaseOptions(
           baseUrl: ApiConstants.baseUrl,
@@ -275,21 +277,102 @@ class AuthService {
             'Content-Type': 'application/json',
             'Accept': 'application/json',
           },
+          extra: kIsWeb ? {'withCredentials': true} : {},
         ),
       );
 
+      final refreshData = <String, dynamic>{
+        'token': currentToken ?? '',
+      };
+      if (!kIsWeb && refreshToken != null) {
+        refreshData['refreshToken'] = refreshToken;
+      }
+
       final response = await refreshDio.post(
         ApiConstants.refreshToken,
-        data: {
-          'token': currentToken ?? '',
-          'refreshToken': refreshToken,
-        },
+        data: refreshData,
+        options: Options(
+          extra: kIsWeb ? {'withCredentials': true} : {},
+        ),
       );
 
       if (response.statusCode == 200 && response.data != null) {
-        final data = response.data;
+        final data = response.data is Map<String, dynamic>
+            ? response.data
+            : Map<String, dynamic>.from(response.data as Map);
+
         final newAccessToken = (data['token'] ?? data['accessToken'] ?? '') as String;
-        final newRefreshToken = (data['refreshToken'] ?? refreshToken) as String;
+        final newRefreshToken = (data['refreshToken'] ?? refreshToken ?? '') as String;
+        final userId = data['userId']?.toString();
+        final email = data['email']?.toString();
+
+        if (newAccessToken.isNotEmpty) {
+          await storage.saveTokens(
+            accessToken: newAccessToken,
+            refreshToken: newRefreshToken,
+            userId: userId,
+            email: email,
+          );
+
+          final resolvedEmail = email ?? await storage.getUserEmail() ?? '';
+          final resolvedUserId = userId ?? await storage.getUserId() ?? resolvedEmail;
+
+          log('🟢 [AuthService.trySilentRefresh] Session restored successfully for: $resolvedEmail');
+          return UserModel(id: resolvedUserId, email: resolvedEmail);
+        }
+      }
+      return null;
+    } catch (e) {
+      log('⚪ [AuthService.trySilentRefresh] Silent refresh did not recover session: $e');
+      return null;
+    }
+  }
+
+  // Manual Token Refresh (used by Auth Inspector page & manual triggers)
+  Future<TokenResponse> refreshTokenManual() async {
+    try {
+      final currentToken = await storage.getAccessToken();
+      final refreshToken = await storage.getRefreshToken();
+
+      if (!kIsWeb && (refreshToken == null || refreshToken.isEmpty)) {
+        throw Exception('Refresh token bulunamadı.');
+      }
+
+      log('🔵 [AuthService.refreshTokenManual] Requesting token refresh (kIsWeb=$kIsWeb)...');
+      final refreshDio = Dio(
+        BaseOptions(
+          baseUrl: ApiConstants.baseUrl,
+          connectTimeout: ApiConstants.connectTimeout,
+          receiveTimeout: ApiConstants.receiveTimeout,
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+          },
+          extra: kIsWeb ? {'withCredentials': true} : {},
+        ),
+      );
+
+      final refreshData = <String, dynamic>{
+        'token': currentToken ?? '',
+      };
+      if (!kIsWeb && refreshToken != null) {
+        refreshData['refreshToken'] = refreshToken;
+      }
+
+      final response = await refreshDio.post(
+        ApiConstants.refreshToken,
+        data: refreshData,
+        options: Options(
+          extra: kIsWeb ? {'withCredentials': true} : {},
+        ),
+      );
+
+      if (response.statusCode == 200 && response.data != null) {
+        final data = response.data is Map<String, dynamic>
+            ? response.data
+            : Map<String, dynamic>.from(response.data as Map);
+        final newAccessToken = (data['token'] ?? data['accessToken'] ?? '') as String;
+        final newRefreshToken = (data['refreshToken'] ?? refreshToken ?? '') as String;
         final userId = data['userId']?.toString();
         final email = data['email']?.toString();
 
@@ -337,59 +420,11 @@ class AuthService {
     } catch (_) {}
 
     await storage.clearAll();
-    log('🟢 [AuthService.logout] User logged out and local storage cleared.');
+    log('🟢 [AuthService.logout] User logged out and storage cleared.');
   }
 
   String _extractErrorMessage(DioException e) {
-    if (e.type == DioExceptionType.connectionTimeout ||
-        e.type == DioExceptionType.receiveTimeout ||
-        e.type == DioExceptionType.sendTimeout) {
-      return 'Bağlantı zaman aşımına uğradı. Lütfen internetinizi kontrol edin.';
-    }
-    if (e.type == DioExceptionType.connectionError) {
-      return 'Sunucuya bağlanılamadı. Lütfen internet bağlantınızı kontrol edin.';
-    }
-
-    if (e.response?.data != null) {
-      final data = e.response!.data;
-      if (data is Map) {
-        // 1. Detailed field validation errors (e.g. ASP.NET ModelState errors)
-        if (data['errors'] != null) {
-          final errors = data['errors'];
-          if (errors is Map) {
-            final msgs = <String>[];
-            errors.forEach((k, v) {
-              if (v is List) {
-                msgs.addAll(v.map((item) => item.toString()));
-              } else {
-                msgs.add(v.toString());
-              }
-            });
-            if (msgs.isNotEmpty) return msgs.join('\n');
-          }
-          return errors.toString();
-        }
-        // 2. Specific message / error descriptions
-        if (data['message'] != null) return data['message'].toString();
-        if (data['error'] != null) return data['error'].toString();
-        if (data['detail'] != null) return data['detail'].toString();
-        if (data['title'] != null) return data['title'].toString();
-      } else if (data is String && data.isNotEmpty) {
-        return data;
-      }
-    }
-
-    if (e.response?.statusCode == 401) {
-      return 'E-posta veya şifre hatalı.';
-    }
-    if (e.response?.statusCode == 400) {
-      return 'Geçersiz istek. Lütfen bilgilerinizi kontrol edin.';
-    }
-    if (e.response?.statusCode == 409) {
-      return 'Bu e-posta adresi ile zaten bir hesap mevcut.';
-    }
-
-    return 'Bir hata oluştu (${e.response?.statusCode ?? "Bilinmeyen"}). Lütfen tekrar deneyin.';
+    return DioErrorHandler.extractMessage(e);
   }
 
   // Windows & Linux Desktop Loopback OAuth 2.0 Flow (RFC 8252)
@@ -400,7 +435,7 @@ class AuthService {
       server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
       final port = server.port;
       final redirectUri = 'http://localhost:$port';
-      final clientId = GoogleAuthConstants.desktopClientId;
+      const clientId = GoogleAuthConstants.desktopClientId;
 
       final codeVerifier = _generateCodeVerifier();
       final codeChallenge = _generateCodeChallenge(codeVerifier);

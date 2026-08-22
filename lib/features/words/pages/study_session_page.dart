@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../core/network/dio_error_handler.dart';
 import '../../../core/theme/app_colors.dart';
+import '../../../core/widgets/no_internet_dialog.dart';
 import '../../../core/widgets/responsive_layout.dart';
 import '../controllers/study_controller.dart';
 import '../controllers/word_list_controller.dart';
@@ -19,12 +21,16 @@ class StudySessionPage extends ConsumerStatefulWidget {
   final List<WordModel> words;
   final int initialIndex;
   final String? listTitle;
+  final bool showSearchBar;
+  final bool isReadOnly;
 
   const StudySessionPage({
     super.key,
     required this.words,
     this.initialIndex = 0,
     this.listTitle,
+    this.showSearchBar = true,
+    this.isReadOnly = false,
   });
 
   @override
@@ -61,9 +67,11 @@ class _StudySessionPageState extends ConsumerState<StudySessionPage>
     );
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      final allWords = ref.read(wordListControllerProvider).words;
       ref.read(studyControllerProvider.notifier).initWithWords(
             widget.words,
             initialIndex: widget.initialIndex,
+            allVocabularyWords: allWords.isNotEmpty ? allWords : widget.words,
           );
       _pageFocusNode.requestFocus();
     });
@@ -185,9 +193,8 @@ class _StudySessionPageState extends ConsumerState<StudySessionPage>
   }
 
   Future<void> _handleAddWord() async {
-    final nav = Navigator.of(context);
     final studyNotifier = ref.read(studyControllerProvider.notifier);
-    final updated = await nav.push<WordModel>(
+    final result = await Navigator.of(context).push<WordModel>(
       MaterialPageRoute(
         builder: (_) => AddEditWordPage(
           initialListName: widget.listTitle != 'All' ? widget.listTitle : null,
@@ -195,19 +202,10 @@ class _StudySessionPageState extends ConsumerState<StudySessionPage>
       ),
     );
 
-    if (updated != null && mounted) {
-      ref.read(wordListControllerProvider.notifier).refresh();
-      final allWords = ref.read(wordListControllerProvider).words;
-      final freshListWords = (widget.listTitle != null &&
-              widget.listTitle != 'All' &&
-              widget.listTitle != 'General')
-          ? allWords.where((w) => w.listName == widget.listTitle).toList()
-          : allWords;
-      final targetIdx = freshListWords.indexWhere((w) =>
-          w.id == updated.id ||
-          (w.en == updated.en && w.tr == updated.tr));
-      final nextIndex = targetIdx >= 0 ? targetIdx : 0;
-      studyNotifier.initWithWords(freshListWords, initialIndex: nextIndex);
+    if (result != null && mounted) {
+      // AddEditWordPage zaten WordListController.addWord() çağırdı
+      // Sadece StudyController'ın master listesini güncelle, index'e dokunma
+      studyNotifier.addNewWord(result);
     }
   }
 
@@ -215,35 +213,17 @@ class _StudySessionPageState extends ConsumerState<StudySessionPage>
     if (_isNavigating) return;
     _isNavigating = true;
     try {
-      final nav = Navigator.of(context);
       final studyNotifier = ref.read(studyControllerProvider.notifier);
-      final updated = await nav.push<WordModel>(
+      final updated = await Navigator.of(context).push<WordModel>(
         MaterialPageRoute(
           builder: (_) => AddEditWordPage(wordToEdit: currentWord),
         ),
       );
 
       if (updated != null && mounted) {
-        ref.read(wordListControllerProvider.notifier).refresh();
-        final allWords = ref.read(wordListControllerProvider).words;
-        final freshListWords = (widget.listTitle != null &&
-                widget.listTitle != 'All' &&
-                widget.listTitle != 'General')
-            ? allWords.where((w) => w.listName == widget.listTitle).toList()
-            : allWords;
-
-        if (freshListWords.isEmpty) {
-          nav.pop();
-        } else {
-          final targetIdx = freshListWords.indexWhere((w) =>
-              w.id == updated.id ||
-              (w.en == updated.en && w.tr == updated.tr));
-          final currentIndex = ref.read(studyControllerProvider).currentIndex;
-          final nextIndex = targetIdx >= 0
-              ? targetIdx
-              : currentIndex.clamp(0, freshListWords.length - 1);
-          studyNotifier.initWithWords(freshListWords, initialIndex: nextIndex);
-        }
+        // AddEditWordPage zaten WordListController.updateWord() çağırdı
+        // Sadece StudyController'da yerinde güncelle — index korunur, arama korunur
+        studyNotifier.updateWordInPlace(updated);
       }
     } finally {
       if (mounted) _isNavigating = false;
@@ -281,24 +261,35 @@ class _StudySessionPageState extends ConsumerState<StudySessionPage>
       final studyNotifier = ref.read(studyControllerProvider.notifier);
 
       if (word.id != null) {
-        await ref.read(wordListControllerProvider.notifier).deleteWord(word.id);
+        final success = await ref
+            .read(wordListControllerProvider.notifier)
+            .deleteWord(word.id);
+        if (!success && mounted) {
+          final err = ref.read(wordListControllerProvider).errorMessage;
+          if (err != null && DioErrorHandler.isNetworkError(err)) {
+            NoInternetDialog.show(
+              context,
+              onRetry: () async {
+                final ok = await ref
+                    .read(wordListControllerProvider.notifier)
+                    .deleteWord(word.id);
+                if (!ok) throw Exception('Retry failed');
+              },
+            );
+          }
+          return;
+        }
       }
 
       if (!mounted) return;
 
-      final allWords = ref.read(wordListControllerProvider).words;
-      final freshListWords = (widget.listTitle != null &&
-              widget.listTitle != 'All' &&
-              widget.listTitle != 'Tümü')
-          ? allWords.where((w) => w.listName == widget.listTitle).toList()
-          : allWords;
+      // Optimistik: StudyController'dan kelimeyi çıkar
+      // Index korunur, arama korunur, liste boşsa sayfadan çık
+      studyNotifier.removeWord(word.id);
 
-      if (freshListWords.isEmpty) {
+      final studyState = ref.read(studyControllerProvider);
+      if (studyState.words.isEmpty) {
         Navigator.of(context).pop();
-      } else {
-        final currentIndex = ref.read(studyControllerProvider).currentIndex;
-        final newIndex = currentIndex.clamp(0, freshListWords.length - 1);
-        studyNotifier.initWithWords(freshListWords, initialIndex: newIndex);
       }
     }
   }
@@ -363,7 +354,6 @@ class _StudySessionPageState extends ConsumerState<StudySessionPage>
       autofocus: true,
       onKeyEvent: _onKeyEvent,
       child: Scaffold(
-        resizeToAvoidBottomInset: false,
         backgroundColor:
             isDark ? AppColors.darkBackground : AppColors.lightBackground,
         appBar: AppBar(
@@ -386,47 +376,49 @@ class _StudySessionPageState extends ConsumerState<StudySessionPage>
           ),
           centerTitle: true,
           actions: [
-            // Add Word Button (Green)
-            IconButton(
-              icon: const Icon(Icons.add_rounded, size: 24, color: Color(0xFF34C759)),
-              tooltip: 'Add Word',
-              onPressed: _handleAddWord,
-            ),
+            if (!widget.isReadOnly) ...[
+              // Add Word Button (Green)
+              IconButton(
+                icon: const Icon(Icons.add_rounded, size: 24, color: Color(0xFF34C759)),
+                tooltip: 'Add Word',
+                onPressed: _handleAddWord,
+              ),
 
-            // Edit Word Button (Green)
-            IconButton(
-              icon: const Icon(Icons.edit_outlined, size: 21, color: Color(0xFF34C759)),
-              tooltip: 'Edit Word',
-              onPressed: hasWords && currentWord != null
-                  ? () => _handleEditCurrentWord(currentWord)
-                  : null,
-            ),
+              // Edit Word Button (Green)
+              IconButton(
+                icon: const Icon(Icons.edit_outlined, size: 21, color: Color(0xFF34C759)),
+                tooltip: 'Edit Word',
+                onPressed: hasWords && currentWord != null
+                    ? () => _handleEditCurrentWord(currentWord)
+                    : null,
+              ),
 
-            // Delete Button (Green)
-            IconButton(
-              icon: const Icon(Icons.delete_outline_rounded, size: 22, color: Color(0xFF34C759)),
-              tooltip: 'Delete',
-              onPressed: hasWords && currentWord != null
-                  ? () => _handleDeleteCurrentWord(currentWord)
-                  : null,
-            ),
-            const SizedBox(width: 4),
+              // Delete Button (Green)
+              IconButton(
+                icon: const Icon(Icons.delete_outline_rounded, size: 22, color: Color(0xFF34C759)),
+                tooltip: 'Delete',
+                onPressed: hasWords && currentWord != null
+                    ? () => _handleDeleteCurrentWord(currentWord)
+                    : null,
+              ),
+              const SizedBox(width: 4),
+            ],
           ],
         ),
         body: Actions(
-          actions: <Type, Action<Intent>>{
-            DirectionalFocusIntent: DoNothingAction(),
-            ActivateIntent: DoNothingAction(),
-            ButtonActivateIntent: DoNothingAction(),
-          },
-          child: GestureDetector(
-            behavior: HitTestBehavior.translucent,
-            onTap: () {
-              FocusScope.of(context).unfocus();
-              _pageFocusNode.requestFocus();
+            actions: <Type, Action<Intent>>{
+              DirectionalFocusIntent: DoNothingAction(),
+              ActivateIntent: DoNothingAction(),
+              ButtonActivateIntent: DoNothingAction(),
             },
-            child: SafeArea(
-              child: LayoutBuilder(
+            child: GestureDetector(
+              behavior: HitTestBehavior.translucent,
+              onTap: () {
+                FocusScope.of(context).unfocus();
+                _pageFocusNode.requestFocus();
+              },
+              child: SafeArea(
+                child: LayoutBuilder(
                 builder: (context, constraints) {
                   final isDesktopLayout = constraints.maxWidth >= 680;
 
@@ -458,21 +450,23 @@ class _StudySessionPageState extends ConsumerState<StudySessionPage>
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.stretch,
                                 children: [
-                                  StudySearchBar(
-                                    isDark: isDark,
-                                    controller: _searchController,
-                                    focusNode: _searchFocusNode,
-                                    onChanged: (val) {
-                                      studyNotifier.onSearchChanged(val);
-                                      setState(() {});
-                                    },
-                                    onClear: () {
-                                      _searchController.clear();
-                                      studyNotifier.onSearchChanged('');
-                                      setState(() {});
-                                    },
-                                  ),
-                                  const SizedBox(height: 10),
+                                  if (widget.showSearchBar) ...[
+                                    StudySearchBar(
+                                      isDark: isDark,
+                                      controller: _searchController,
+                                      focusNode: _searchFocusNode,
+                                      onChanged: (val) {
+                                        studyNotifier.onSearchChanged(val);
+                                        setState(() {});
+                                      },
+                                      onClear: () {
+                                        _searchController.clear();
+                                        studyNotifier.onSearchChanged('');
+                                        setState(() {});
+                                      },
+                                    ),
+                                    const SizedBox(height: 10),
+                                  ],
                                   StudySynonymsBar(
                                     isDark: isDark,
                                     badges: studyState.synonymBadges,
@@ -558,21 +552,23 @@ class _StudySessionPageState extends ConsumerState<StudySessionPage>
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
-                          StudySearchBar(
-                            isDark: isDark,
-                            controller: _searchController,
-                            focusNode: _searchFocusNode,
-                            onChanged: (val) {
-                              studyNotifier.onSearchChanged(val);
-                              setState(() {});
-                            },
-                            onClear: () {
-                              _searchController.clear();
-                              studyNotifier.onSearchChanged('');
-                              setState(() {});
-                            },
-                          ),
-                          const SizedBox(height: 6),
+                          if (widget.showSearchBar) ...[
+                            StudySearchBar(
+                              isDark: isDark,
+                              controller: _searchController,
+                              focusNode: _searchFocusNode,
+                              onChanged: (val) {
+                                studyNotifier.onSearchChanged(val);
+                                setState(() {});
+                              },
+                              onClear: () {
+                                _searchController.clear();
+                                studyNotifier.onSearchChanged('');
+                                setState(() {});
+                              },
+                            ),
+                            const SizedBox(height: 6),
+                          ],
                           StudySynonymsBar(
                             isDark: isDark,
                             badges: studyState.synonymBadges,
@@ -626,7 +622,7 @@ class _StudySessionPageState extends ConsumerState<StudySessionPage>
                           ),
                           const SizedBox(height: 8),
                           Padding(
-                            padding: const EdgeInsets.only(bottom: 20),
+                            padding: const EdgeInsets.only(bottom: 16),
                             child: StudyControlButtons(
                               isDark: isDark,
                               hasWords: hasWords,

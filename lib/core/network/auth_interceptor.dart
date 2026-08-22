@@ -1,5 +1,6 @@
 import 'dart:developer';
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import '../constants/api_constants.dart';
 import '../storage/secure_storage_service.dart';
 
@@ -19,6 +20,11 @@ class AuthInterceptor extends QueuedInterceptorsWrapper {
     RequestOptions options,
     RequestInterceptorHandler handler,
   ) async {
+    // 🌐 Web ortamında CORS cookie iletimi için withCredentials'ı garanti et
+    if (kIsWeb) {
+      options.extra['withCredentials'] = true;
+    }
+
     // Exclude auth public endpoints from requiring Authorization header if not needed
     final isAuthEndpoint = options.path.contains('/api/auth/login') ||
         options.path.contains('/api/auth/register') ||
@@ -53,13 +59,17 @@ class AuthInterceptor extends QueuedInterceptorsWrapper {
           err.requestOptions.path.contains('/api/auth/refresh-token');
 
       if (!isAuthEndpoint) {
-        final refreshToken = await storage.getRefreshToken();
         final currentToken = await storage.getAccessToken();
+        final refreshToken = await storage.getRefreshToken();
 
-        if (refreshToken != null && refreshToken.isNotEmpty) {
+        // 🌐 Web ortamında refresh token tarayıcı HttpOnly cookie'sindedir (refreshToken null olsa bile denenir)
+        // 📱 Native ortamda ise kasadaki refreshToken aranır
+        final canAttemptRefresh = kIsWeb || (refreshToken != null && refreshToken.isNotEmpty);
+
+        if (canAttemptRefresh) {
           try {
-            log('AuthInterceptor: 401 received. Attempting to refresh token...');
-            
+            log('AuthInterceptor: 401 received. Attempting smart token refresh (kIsWeb=$kIsWeb)...');
+
             // Clean Dio instance to avoid recursive interception
             final refreshDio = Dio(
               BaseOptions(
@@ -70,21 +80,32 @@ class AuthInterceptor extends QueuedInterceptorsWrapper {
                   'Content-Type': 'application/json',
                   'Accept': 'application/json',
                 },
+                extra: kIsWeb ? {'withCredentials': true} : {},
               ),
             );
 
+            final refreshData = <String, dynamic>{
+              'token': currentToken ?? '',
+            };
+            if (!kIsWeb && refreshToken != null) {
+              refreshData['refreshToken'] = refreshToken;
+            }
+
             final response = await refreshDio.post(
               ApiConstants.refreshToken,
-              data: {
-                'token': currentToken ?? '',
-                'refreshToken': refreshToken,
-              },
+              data: refreshData,
+              options: Options(
+                extra: kIsWeb ? {'withCredentials': true} : {},
+              ),
             );
 
             if (response.statusCode == 200 && response.data != null) {
-              final data = response.data;
+              final data = response.data is Map<String, dynamic>
+                  ? response.data
+                  : Map<String, dynamic>.from(response.data as Map);
+
               final newAccessToken = (data['token'] ?? data['accessToken'] ?? '') as String;
-              final newRefreshToken = (data['refreshToken'] ?? refreshToken) as String;
+              final newRefreshToken = (data['refreshToken'] ?? refreshToken ?? '') as String;
               final userId = data['userId']?.toString();
               final email = data['email']?.toString();
 
@@ -101,6 +122,9 @@ class AuthInterceptor extends QueuedInterceptorsWrapper {
                 // Clone request options and retry
                 final requestOptions = err.requestOptions;
                 requestOptions.headers['Authorization'] = 'Bearer $newAccessToken';
+                if (kIsWeb) {
+                  requestOptions.extra['withCredentials'] = true;
+                }
 
                 final retryResponse = await dio.fetch(requestOptions);
                 return handler.resolve(retryResponse);
@@ -121,3 +145,4 @@ class AuthInterceptor extends QueuedInterceptorsWrapper {
     return handler.next(err);
   }
 }
+

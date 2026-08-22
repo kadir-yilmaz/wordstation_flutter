@@ -76,10 +76,10 @@ class StudySynonymsBar extends StatelessWidget {
         ),
         child: Center(
           child: Text(
-            'No synonyms available for this word.',
+            'Bu kelime için eş anlamlı bulunamadı.',
             textAlign: TextAlign.center,
             style: TextStyle(
-              fontSize: 13,
+              fontSize: 12.5,
               fontWeight: FontWeight.w500,
               color: isDark ? AppColors.darkTextMuted : const Color(0xFF8E8E93),
             ),

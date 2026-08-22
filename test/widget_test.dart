@@ -4,13 +4,21 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:wordstation_flutter/core/services/sound_service.dart';
+import 'package:wordstation_flutter/core/services/tts_service.dart';
+import 'package:wordstation_flutter/core/storage/secure_storage_service.dart';
 import 'package:wordstation_flutter/features/auth/models/login_request.dart';
 import 'package:wordstation_flutter/features/auth/models/token_response.dart';
 import 'package:wordstation_flutter/features/auth/models/user_model.dart';
+import 'package:wordstation_flutter/features/auth/pages/splash_page.dart';
+import 'package:wordstation_flutter/features/navigation/main_navigation_page.dart';
+
 import 'package:wordstation_flutter/features/quiz/controllers/quiz_controller.dart';
 import 'package:wordstation_flutter/features/quiz/models/daily_quiz_plan_model.dart';
 import 'package:wordstation_flutter/features/quiz/models/quiz_history_model.dart';
+import 'package:wordstation_flutter/features/quiz/pages/daily_plan_page.dart';
 import 'package:wordstation_flutter/features/quiz/pages/quiz_history_page.dart';
+import 'package:wordstation_flutter/features/quiz/pages/quiz_page.dart';
+import 'package:wordstation_flutter/features/words/controllers/study_controller.dart';
 import 'package:wordstation_flutter/features/words/models/synonym_group_model.dart';
 import 'package:wordstation_flutter/features/words/models/word_model.dart';
 import 'package:wordstation_flutter/features/words/pages/study_session_page.dart';
@@ -93,7 +101,7 @@ void main() {
       expect(tokenResp.refreshToken, 'refresh_token_456');
       expect(tokenResp.userId, 'user_99');
 
-      final user = UserModel(id: 'user_99', email: 'test@wordstation.com');
+      const user = UserModel(id: 'user_99', email: 'test@wordstation.com');
       expect(user.id, 'user_99');
       expect(user.email, 'test@wordstation.com');
     });
@@ -312,6 +320,58 @@ void main() {
       await controller.clearDailyHistory();
       expect(controller.state.historyList.length, 0);
     });
+
+    test('SecureStorageService caches daily plan and QuizController initializes from cache', () async {
+      final storage = SecureStorageService();
+      final plan = DailyQuizPlanModel(
+        id: 'plan_123',
+        listName: 'B2',
+        dailyCount: 10,
+        shuffledWordIds: const [1, 2, 3, 4],
+        createdAt: DateTime.now(),
+      );
+
+      // Save to cache
+      await storage.saveCachedDailyPlan(plan);
+      final cached = await storage.getCachedDailyPlan();
+      expect(cached, isNotNull);
+      expect(cached!.id, 'plan_123');
+      expect(cached.listName, 'B2');
+
+      // Controller initializes from cache
+      final controller = QuizController(
+        const [],
+        soundService: SoundService(enableAudio: false),
+        storageService: storage,
+      );
+
+      // Give async microtask a moment
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+      expect(controller.state.dailyPlan, isNotNull);
+      expect(controller.state.dailyPlan!.id, 'plan_123');
+      expect(controller.state.isPlanLoaded, isTrue);
+
+      // Clean up cache
+      await storage.clearCachedDailyPlan();
+      final afterClear = await storage.getCachedDailyPlan();
+      expect(afterClear, isNull);
+    });
+  });
+
+  group('Study Controller Tests', () {
+    test('StudyController matches synonyms from global vocabulary for sublist study', () {
+      final studyController = StudyController(TtsService());
+      const word1 = WordModel(id: 1, en: 'abundant', tr: 'bol, çok', listName: 'Day 1');
+      const word2 = WordModel(id: 2, en: 'plentiful', tr: 'bol; bereketli', listName: 'Day 2');
+      const word3 = WordModel(id: 3, en: 'sparse', tr: 'kıt, seyrek', listName: 'Day 3');
+
+      // Studying only Day 1 (word1), but with global vocab [word1, word2, word3]
+      studyController.initWithWords([word1], allVocabularyWords: [word1, word2, word3]);
+
+      expect(studyController.state.synonymBadges.isNotEmpty, isTrue);
+      expect(studyController.state.synonymBadges.first.word.en, 'plentiful');
+      expect(studyController.state.synonymBadges.first.matchedMeaning, 'bol');
+    });
   });
 
   testWidgets('QuizHistoryPage renders compact rows and handles empty state', (WidgetTester tester) async {
@@ -374,6 +434,116 @@ void main() {
     await tester.pumpAndSettle();
   });
 
+  testWidgets('QuizPage renders 2 top tabs (Quiz Yap & Geçmiş Sonuçlar)', (WidgetTester tester) async {
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          quizControllerProvider.overrideWith((ref) => QuizController(
+                const [],
+                soundService: SoundService(enableAudio: false),
+              )),
+        ],
+        child: const MaterialApp(
+          home: QuizPage(),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Kelime Testi'), findsOneWidget);
+    expect(find.text('Quiz Yap'), findsOneWidget);
+    expect(find.text('Geçmiş Sonuçlar'), findsOneWidget);
+  });
+
+  testWidgets('DailyPlanPage renders 2 top tabs (Günlük Plan & Geçmiş Günler)', (WidgetTester tester) async {
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          quizControllerProvider.overrideWith((ref) => QuizController(
+                const [],
+                soundService: SoundService(enableAudio: false),
+              )),
+        ],
+        child: const MaterialApp(
+          home: DailyPlanPage(),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Günlük Quiz Planı'), findsOneWidget);
+    expect(find.text('Günlük Plan'), findsOneWidget);
+    expect(find.text('Geçmiş Günler'), findsOneWidget);
+  });
+
+  testWidgets('MainNavigationPage renders 5 tabs including Plan as 4th tab', (WidgetTester tester) async {
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          quizControllerProvider.overrideWith((ref) => QuizController(
+                const [],
+                soundService: SoundService(enableAudio: false),
+              )),
+        ],
+        child: const MaterialApp(
+          home: MainNavigationPage(),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('My Lists'), findsWidgets);
+    expect(find.text('Synonyms'), findsWidgets);
+    expect(find.text('Quiz'), findsWidgets);
+    expect(find.text('Plan'), findsWidgets);
+    expect(find.text('Profile'), findsWidgets);
+  });
+
+  testWidgets('StudySessionPage renders in read-only mode without search bar', (WidgetTester tester) async {
+    const testWord = WordModel(id: 1, en: 'solitude', tr: 'yalnızlık', listName: 'B2');
+
+    await tester.pumpWidget(
+      const ProviderScope(
+        child: MaterialApp(
+          home: StudySessionPage(
+            words: [testWord],
+            listTitle: 'Günün Kelimeleri',
+            showSearchBar: false,
+            isReadOnly: true,
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('solitude'), findsOneWidget);
+    expect(find.byType(TextField), findsNothing);
+  });
+
+  group('SecureStorageService Unit Tests', () {
+    test('Token saving, retrieval and clearAll lifecycle', () async {
+      final storage = SecureStorageService();
+      await storage.clearAll();
+
+      expect(await storage.hasValidToken(), isFalse);
+
+      await storage.saveTokens(
+        accessToken: 'mock_jwt_access_token_123',
+        refreshToken: 'mock_refresh_token_456',
+        email: 'user@wordstation.com',
+        userId: 'user_1',
+      );
+
+      expect(await storage.hasValidToken(), isTrue);
+      expect(await storage.getAccessToken(), 'mock_jwt_access_token_123');
+      expect(await storage.getUserEmail(), 'user@wordstation.com');
+
+      await storage.clearAll();
+      expect(await storage.hasValidToken(), isFalse);
+      expect(await storage.getAccessToken(), isNull);
+    });
+  });
+
   testWidgets('WordStationApp smoke test with pump', (WidgetTester tester) async {
     await tester.pumpWidget(
       const ProviderScope(
@@ -381,10 +551,13 @@ void main() {
       ),
     );
 
-    // Initial frame
-    expect(find.text('WordStation'), findsWidgets);
+    // Initial frame loads AuthGate
+    expect(find.byType(AuthGate), findsOneWidget);
 
-    // Advance time past the splash timer
-    await tester.pumpAndSettle(const Duration(seconds: 4));
+    // After auth resolution, renders LoginPage or MainNavigationPage
+    await tester.pumpAndSettle();
+    expect(find.byType(WordStationApp), findsOneWidget);
   });
 }
+
+

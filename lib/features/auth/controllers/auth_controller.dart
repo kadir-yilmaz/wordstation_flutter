@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/storage/secure_storage_service.dart';
@@ -72,13 +73,25 @@ class AuthController extends StateNotifier<AuthState> {
         final userId = await storage.getUserId() ?? 'user';
         final email = await storage.getUserEmail() ?? '';
         state = AuthState.authenticated(UserModel(id: userId, email: email));
-      } else {
-        state = AuthState.unauthenticated();
+        return;
       }
+
+      // 🌐 Web ortamında sayfa yenilendiğinde (F5) RAM sıfırlanır.
+      // Tarayıcıdaki HttpOnly Cookie ile arka planda sessiz oturum kurtarma (Silent Refresh) denenir.
+      if (kIsWeb) {
+        final recoveredUser = await authService.trySilentRefresh();
+        if (recoveredUser != null) {
+          state = AuthState.authenticated(recoveredUser);
+          return;
+        }
+      }
+
+      state = AuthState.unauthenticated();
     } catch (_) {
       state = AuthState.unauthenticated();
     }
   }
+
 
   Future<bool> login(String email, String password) async {
     state = AuthState.loading();

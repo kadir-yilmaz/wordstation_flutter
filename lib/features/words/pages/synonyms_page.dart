@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/widgets/empty_state_view.dart';
+import '../../../core/widgets/network_error_view.dart';
 import '../../../core/widgets/responsive_layout.dart';
 import '../../../core/widgets/word_detail_bottom_sheet.dart';
 import '../controllers/word_list_controller.dart';
@@ -155,28 +156,13 @@ class _SynonymsPageState extends ConsumerState<SynonymsPage> {
                     valueColor: AlwaysStoppedAnimation<Color>(AppColors.turquoise),
                   ),
                 ),
-                error: (err, _) => Center(
-                  child: Padding(
-                    padding: const EdgeInsets.all(24),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Icon(Icons.error_outline_rounded,
-                            size: 44, color: AppColors.error),
-                        const SizedBox(height: 12),
-                        Text(
-                          'Eş anlamlılar yüklenemedi: $err',
-                          textAlign: TextAlign.center,
-                          style: const TextStyle(fontSize: 14),
-                        ),
-                        const SizedBox(height: 16),
-                        ElevatedButton(
-                          onPressed: () => ref.invalidate(synonymGroupsFutureProvider),
-                          child: const Text('Tekrar Dene'),
-                        ),
-                      ],
-                    ),
-                  ),
+                error: (err, _) => NetworkErrorView(
+                  title: 'Eş Anlamlılar Yüklenemedi',
+                  message: 'İnternet bağlantınızı kontrol edip lütfen tekrar deneyin.',
+                  onRetry: () async {
+                    ref.invalidate(synonymGroupsFutureProvider);
+                    await ref.read(synonymGroupsFutureProvider.future);
+                  },
                 ),
                 data: (groups) {
                   final filteredGroups = groups.where((g) {
@@ -188,23 +174,39 @@ class _SynonymsPageState extends ConsumerState<SynonymsPage> {
                   }).toList();
 
                   if (filteredGroups.isEmpty) {
-                    return EmptyStateView(
-                      icon: Icons.search_off_rounded,
-                      title: _searchQuery.isEmpty
-                          ? 'Eş Anlamlı Grup Yok'
-                          : 'Sonuç Bulunamadı',
-                      description: _searchQuery.isEmpty
-                          ? 'Aynı Türkçe anlama sahip en az 2 kelime eklendiğinde burada gruplanacaktır.'
-                          : 'Aradığınız kelimeye veya anlama uygun eş anlamlı grup bulunamadı.',
-                      buttonText: _searchQuery.isEmpty ? 'Yenile' : 'Aramayı Temizle',
-                      onButtonPressed: () {
-                        if (_searchQuery.isNotEmpty) {
-                          _searchController.clear();
-                          setState(() => _searchQuery = '');
-                        } else {
-                          ref.invalidate(synonymGroupsFutureProvider);
-                        }
+                    return RefreshIndicator(
+                      color: AppColors.turquoise,
+                      onRefresh: () async {
+                        ref.invalidate(synonymGroupsFutureProvider);
                       },
+                      child: LayoutBuilder(
+                        builder: (context, constraints) => SingleChildScrollView(
+                          physics: const AlwaysScrollableScrollPhysics(
+                            parent: BouncingScrollPhysics(),
+                          ),
+                          child: ConstrainedBox(
+                            constraints: BoxConstraints(minHeight: constraints.maxHeight),
+                            child: EmptyStateView(
+                              icon: Icons.search_off_rounded,
+                              title: _searchQuery.isEmpty
+                                  ? 'Eş Anlamlı Grup Yok'
+                                  : 'Sonuç Bulunamadı',
+                              description: _searchQuery.isEmpty
+                                  ? 'Aynı Türkçe anlama sahip en az 2 kelime eklendiğinde burada gruplanacaktır. Aşağı çekerek yenileyebilirsiniz.'
+                                  : 'Aradığınız kelimeye veya anlama uygun eş anlamlı grup bulunamadı.',
+                              buttonText: _searchQuery.isEmpty ? 'Yenile' : 'Aramayı Temizle',
+                              onButtonPressed: () {
+                                if (_searchQuery.isNotEmpty) {
+                                  _searchController.clear();
+                                  setState(() => _searchQuery = '');
+                                } else {
+                                  ref.invalidate(synonymGroupsFutureProvider);
+                                }
+                              },
+                            ),
+                          ),
+                        ),
+                      ),
                     );
                   }
 

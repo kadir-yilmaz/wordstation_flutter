@@ -80,9 +80,14 @@ class WordListController extends StateNotifier<WordListState> {
     if (!mounted) return;
     state = state.copyWith(isLoading: true, errorMessage: null);
     try {
-      final fetchedLists = await _wordService.getListNames();
-      final words = await _wordService.getWords();
-      
+      // Paralel API çağrıları — seri yerine 2x hızlı
+      final results = await Future.wait([
+        _wordService.getListNames(),
+        _wordService.getWords(),
+      ]);
+      final fetchedLists = results[0] as List<String>;
+      final words = results[1] as List<WordModel>;
+
       final derivedLists = words
           .map((w) => w.listName ?? 'General')
           .where((l) => l.isNotEmpty && l != 'Tümü' && l != 'All')
@@ -111,54 +116,60 @@ class WordListController extends StateNotifier<WordListState> {
     }
   }
 
-  Future<void> createList(String listName) async {
-    if (listName.trim().isEmpty) return;
+  Future<bool> createList(String listName) async {
+    if (listName.trim().isEmpty) return false;
     final trimmed = listName.trim();
 
     if (state.listNames.contains(trimmed)) {
       state = state.copyWith(errorMessage: 'Bu isimde bir liste zaten mevcut.');
-      return;
+      return false;
     }
 
     state = state.copyWith(isLoading: true, errorMessage: null);
     try {
       await _wordService.addList(trimmed);
       await loadInitialData();
+      return true;
     } catch (e) {
-      if (!mounted) return;
+      if (!mounted) return false;
       state = state.copyWith(
         isLoading: false,
         errorMessage: e.toString().replaceAll('Exception: ', ''),
       );
+      return false;
     }
   }
 
-  Future<void> renameList(String oldName, String newName) async {
-    if (newName.trim().isEmpty || oldName == newName) return;
+  Future<bool> renameList(String oldName, String newName) async {
+    if (newName.trim().isEmpty || oldName == newName) return false;
     state = state.copyWith(isLoading: true, errorMessage: null);
     try {
       await _wordService.renameList(oldName, newName.trim());
       await loadInitialData();
+      return true;
     } catch (e) {
-      if (!mounted) return;
+      if (!mounted) return false;
       state = state.copyWith(
         isLoading: false,
         errorMessage: e.toString().replaceAll('Exception: ', ''),
       );
+      return false;
     }
   }
 
-  Future<void> deleteList(String listName) async {
+  Future<bool> deleteList(String listName) async {
     state = state.copyWith(isLoading: true, errorMessage: null);
     try {
       await _wordService.deleteList(listName);
       await loadInitialData();
+      return true;
     } catch (e) {
-      if (!mounted) return;
+      if (!mounted) return false;
       state = state.copyWith(
         isLoading: false,
         errorMessage: e.toString().replaceAll('Exception: ', ''),
       );
+      return false;
     }
   }
 
@@ -239,8 +250,15 @@ class WordListController extends StateNotifier<WordListState> {
 
   Future<bool> addWord(WordModel word) async {
     try {
-      await _wordService.addWord(word);
-      await loadInitialData();
+      final saved = await _wordService.addWord(word);
+      if (!mounted) return true;
+      // Optimistik: Kelimeyi local state'e ekle, full reload yapma
+      final updatedWords = [...state.words, saved];
+      final listName = saved.listName ?? 'General';
+      final updatedListNames = state.listNames.contains(listName)
+          ? state.listNames
+          : [...state.listNames, listName];
+      state = state.copyWith(words: updatedWords, listNames: updatedListNames);
       return true;
     } catch (e) {
       if (!mounted) return false;
@@ -253,8 +271,14 @@ class WordListController extends StateNotifier<WordListState> {
 
   Future<bool> updateWord(WordModel word) async {
     try {
-      await _wordService.updateWord(word);
-      await loadInitialData();
+      final saved = await _wordService.updateWord(word);
+      if (!mounted) return true;
+      // Optimistik: Kelimeyi local state'de güncelle, full reload yapma
+      final updatedWords = state.words.map((w) {
+        if (w.id == saved.id) return saved;
+        return w;
+      }).toList();
+      state = state.copyWith(words: updatedWords);
       return true;
     } catch (e) {
       if (!mounted) return false;
@@ -268,7 +292,10 @@ class WordListController extends StateNotifier<WordListState> {
   Future<bool> deleteWord(dynamic id) async {
     try {
       await _wordService.deleteWord(id);
-      await loadInitialData();
+      if (!mounted) return true;
+      // Optimistik: Kelimeyi local state'den çıkar, full reload yapma
+      final updatedWords = state.words.where((w) => w.id != id).toList();
+      state = state.copyWith(words: updatedWords);
       return true;
     } catch (e) {
       if (!mounted) return false;

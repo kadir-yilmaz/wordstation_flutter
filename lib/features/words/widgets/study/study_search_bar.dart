@@ -45,8 +45,11 @@ class StudySearchBar extends StatelessWidget {
               ? IconButton(
                   icon: const Icon(Icons.clear_rounded, size: 18),
                   padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
-                  color: isDark ? AppColors.darkTextMuted : const Color(0xFF8E8E93),
+                  constraints:
+                      const BoxConstraints(minWidth: 36, minHeight: 36),
+                  color: isDark
+                      ? AppColors.darkTextMuted
+                      : const Color(0xFF8E8E93),
                   onPressed: onClear,
                 )
               : null,

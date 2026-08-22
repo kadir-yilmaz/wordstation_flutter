@@ -2,7 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/theme/app_colors.dart';
+import '../auth/controllers/auth_controller.dart';
+import '../auth/pages/login_page.dart';
 import '../profile/pages/profile_page.dart';
+import '../quiz/controllers/quiz_controller.dart';
+import '../quiz/pages/daily_plan_page.dart';
 import '../quiz/pages/quiz_page.dart';
 import '../words/controllers/word_list_controller.dart';
 import '../words/pages/synonyms_page.dart';
@@ -56,16 +60,29 @@ class _MainNavigationPageState extends ConsumerState<MainNavigationPage>
       setState(() {
         _currentIndex = index;
       });
-      // Always fetch fresh data on tab switch
-      ref.read(wordListControllerProvider.notifier).refresh();
-      if (index == 1) {
+      // Optimize: Only fetch list data for relevant tabs
+      if (index == 0) {
+        ref.read(wordListControllerProvider.notifier).refresh();
+      } else if (index == 1) {
         ref.invalidate(synonymGroupsFutureProvider);
+      } else if (index == 2 || index == 3) {
+        ref.read(quizControllerProvider.notifier).loadInitialData();
       }
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    // Listen for auth session expiration / 401 unauthorized
+    ref.listen<AuthState>(authControllerProvider, (previous, next) {
+      if (next.status == AuthStatus.unauthenticated && mounted) {
+        Navigator.of(context, rootNavigator: true).pushAndRemoveUntil(
+          MaterialPageRoute(builder: (_) => const LoginPage()),
+          (route) => false,
+        );
+      }
+    });
+
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final isDesktop = MediaQuery.of(context).size.width >= 720;
     const activeColor = Color(0xFF28CD41); // iOS System Green from Swift app
@@ -85,6 +102,7 @@ class _MainNavigationPageState extends ConsumerState<MainNavigationPage>
         ),
         const SynonymsPage(),
         const QuizPage(),
+        const DailyPlanPage(),
         const ProfilePage(),
       ],
     );
@@ -162,6 +180,13 @@ class _MainNavigationPageState extends ConsumerState<MainNavigationPage>
                         ),
                         _buildTabItem(
                           index: 3,
+                          icon: Icons.bolt_rounded,
+                          label: 'Plan',
+                          activeColor: activeColor,
+                          inactiveColor: inactiveColor,
+                        ),
+                        _buildTabItem(
+                          index: 4,
                           icon: Icons.account_circle_outlined,
                           label: 'Profile',
                           activeColor: activeColor,
@@ -222,14 +247,18 @@ class _MainNavigationPageState extends ConsumerState<MainNavigationPage>
                     ),
                   ),
                   const SizedBox(width: 12),
-                  Text(
-                    'Word Station',
-                    style: TextStyle(
-                      fontSize: 17,
-                      fontWeight: FontWeight.w800,
-                      color: isDark
-                          ? AppColors.darkTextPrimary
-                          : AppColors.lightTextPrimary,
+                  Expanded(
+                    child: Text(
+                      'Word Station',
+                      style: TextStyle(
+                        fontSize: 17,
+                        fontWeight: FontWeight.w800,
+                        color: isDark
+                            ? AppColors.darkTextPrimary
+                            : AppColors.lightTextPrimary,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                     ),
                   ),
                 ],
@@ -273,6 +302,15 @@ class _MainNavigationPageState extends ConsumerState<MainNavigationPage>
                   const SizedBox(height: 6),
                   _buildSidebarItem(
                     index: 3,
+                    icon: Icons.bolt_rounded,
+                    label: 'Plan',
+                    activeColor: activeColor,
+                    inactiveColor: inactiveColor,
+                    isDark: isDark,
+                  ),
+                  const SizedBox(height: 6),
+                  _buildSidebarItem(
+                    index: 4,
                     icon: Icons.account_circle_outlined,
                     label: 'Profile',
                     activeColor: activeColor,

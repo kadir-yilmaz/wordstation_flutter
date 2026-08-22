@@ -5,6 +5,7 @@ import '../../../core/theme/app_colors.dart';
 import '../../../core/widgets/word_detail_bottom_sheet.dart';
 import '../../words/controllers/word_list_controller.dart';
 import '../../words/models/word_model.dart';
+import '../../words/pages/study_session_page.dart';
 import '../controllers/quiz_controller.dart';
 import '../models/quiz_history_model.dart';
 
@@ -67,63 +68,81 @@ class QuizHistoryPage extends ConsumerWidget {
         ],
       ),
       body: SafeArea(
-        child: historyList.isEmpty
-            ? Center(
-                child: Padding(
-                  padding: const EdgeInsets.all(32),
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(
-                        Icons.history_toggle_off_rounded,
-                        size: 56,
-                        color: isDark
-                            ? AppColors.darkTextMuted
-                            : AppColors.lightTextMuted,
-                      ),
-                      const SizedBox(height: 16),
-                      Text(
-                        'Henüz Çözülmüş Test Yok',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w700,
-                          color: isDark
-                              ? AppColors.darkTextPrimary
-                              : AppColors.lightTextPrimary,
+        child: RefreshIndicator(
+          color: AppColors.turquoise,
+          onRefresh: () async {
+            await quizNotifier.loadInitialData();
+          },
+          child: historyList.isEmpty
+              ? LayoutBuilder(
+                  builder: (context, constraints) => SingleChildScrollView(
+                    physics: const AlwaysScrollableScrollPhysics(
+                      parent: BouncingScrollPhysics(),
+                    ),
+                    child: ConstrainedBox(
+                      constraints: BoxConstraints(minHeight: constraints.maxHeight),
+                      child: Center(
+                        child: Padding(
+                          padding: const EdgeInsets.all(32),
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(
+                                Icons.history_toggle_off_rounded,
+                                size: 56,
+                                color: isDark
+                                    ? AppColors.darkTextMuted
+                                    : AppColors.lightTextMuted,
+                              ),
+                              const SizedBox(height: 16),
+                              Text(
+                                'Henüz Çözülmüş Test Yok',
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w700,
+                                  color: isDark
+                                      ? AppColors.darkTextPrimary
+                                      : AppColors.lightTextPrimary,
+                                ),
+                              ),
+                              const SizedBox(height: 6),
+                              Text(
+                                isDailyQuiz
+                                    ? 'Günlük quizleri çözdükçe tüm sonuçlarınız ve tekrar çalışmalarınız burada listelenecektir.'
+                                    : 'Genel quizleri çözdükçe tüm test sonuçlarınız burada listelenecektir.',
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  color: isDark
+                                      ? AppColors.darkTextSecondary
+                                      : AppColors.lightTextSecondary,
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
                       ),
-                      const SizedBox(height: 6),
-                      Text(
-                        isDailyQuiz
-                            ? 'Günlük quizleri çözdükçe tüm sonuçlarınız ve tekrar çalışmalarınız burada listelenecektir.'
-                            : 'Genel quizleri çözdükçe tüm test sonuçlarınız burada listelenecektir.',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          fontSize: 13,
-                          color: isDark
-                              ? AppColors.darkTextSecondary
-                              : AppColors.lightTextSecondary,
-                        ),
-                      ),
-                    ],
+                    ),
                   ),
+                )
+              : ListView.separated(
+                  physics: const AlwaysScrollableScrollPhysics(
+                    parent: BouncingScrollPhysics(),
+                  ),
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                  itemCount: historyList.length,
+                  separatorBuilder: (_, _) => const SizedBox(height: 8),
+                  itemBuilder: (context, idx) {
+                    final entry = historyList[idx];
+                    return _buildCompactHistoryRow(
+                      context: context,
+                      entry: entry,
+                      isDark: isDark,
+                      allWords: wordListState.words,
+                    );
+                  },
                 ),
-              )
-            : ListView.separated(
-                physics: const BouncingScrollPhysics(),
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                itemCount: historyList.length,
-                separatorBuilder: (_, _) => const SizedBox(height: 8),
-                itemBuilder: (context, idx) {
-                  final entry = historyList[idx];
-                  return _buildCompactHistoryRow(
-                    context: context,
-                    entry: entry,
-                    isDark: isDark,
-                    allWords: wordListState.words,
-                  );
-                },
-              ),
+        ),
       ),
     );
   }
@@ -243,16 +262,16 @@ class QuizHistoryPage extends ConsumerWidget {
               mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
-                  '${entry.score}/${entry.maxScore} Puan',
+                  '${entry.correctCount} / ${entry.totalQuestions} Doğru',
                   style: const TextStyle(
                     fontSize: 12.5,
-                    fontWeight: FontWeight.w700,
+                    fontWeight: FontWeight.w800,
                     color: AppColors.turquoise,
                   ),
                 ),
                 const SizedBox(height: 1),
                 Text(
-                  '${entry.correctCount} D, ${entry.wrongCount} Y',
+                  '${entry.wrongCount} Yanlış',
                   style: TextStyle(
                     fontSize: 11,
                     fontWeight: FontWeight.w500,
@@ -264,11 +283,40 @@ class QuizHistoryPage extends ConsumerWidget {
               ],
             ),
             const SizedBox(width: 4),
-            const Icon(
-              Icons.chevron_right_rounded,
-              size: 18,
-              color: Color(0xFF8E8E93),
-            ),
+
+            // Study Flashcards Button
+            if (entry.results.isNotEmpty)
+              IconButton(
+                icon: const Icon(
+                  Icons.auto_stories_rounded,
+                  size: 20,
+                  color: Color(0xFF34C759),
+                ),
+                tooltip: 'Kelimeleri Çalış',
+                visualDensity: VisualDensity.compact,
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                onPressed: () {
+                  HapticFeedback.selectionClick();
+                  final words = entry.results.map((r) => r.word).toList();
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => StudySessionPage(
+                        words: words,
+                        listTitle: entry.title,
+                        showSearchBar: false,
+                        isReadOnly: true,
+                      ),
+                    ),
+                  );
+                },
+              )
+            else
+              const Icon(
+                Icons.chevron_right_rounded,
+                size: 18,
+                color: Color(0xFF8E8E93),
+              ),
           ],
         ),
       ),
@@ -348,7 +396,6 @@ void showQuizHistoryDetailModal(
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 20),
                 child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     Expanded(
                       child: Column(
@@ -366,7 +413,7 @@ void showQuizHistoryDetailModal(
                           ),
                           const SizedBox(height: 2),
                           Text(
-                            '${entry.correctCount} Doğru / ${entry.totalQuestions} Soru (%${entry.percentage})',
+                            '${entry.correctCount} / ${entry.totalQuestions} Doğru • %${entry.percentage} Başarı',
                             style: const TextStyle(
                               fontSize: 12.5,
                               fontWeight: FontWeight.w600,
@@ -376,6 +423,41 @@ void showQuizHistoryDetailModal(
                         ],
                       ),
                     ),
+                    if (entry.results.isNotEmpty) ...[
+                      ElevatedButton.icon(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF34C759),
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 12, vertical: 8),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          elevation: 0,
+                        ),
+                        icon: const Icon(Icons.auto_stories_rounded, size: 16),
+                        label: const Text(
+                          'Çalış',
+                          style: TextStyle(
+                              fontSize: 12.5, fontWeight: FontWeight.w700),
+                        ),
+                        onPressed: () {
+                          Navigator.of(ctx).pop();
+                          final words = entry.results.map((r) => r.word).toList();
+                          Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (_) => StudySessionPage(
+                                words: words,
+                                listTitle: entry.title,
+                                showSearchBar: false,
+                                isReadOnly: true,
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                      const SizedBox(width: 8),
+                    ],
                     IconButton(
                       icon: const Icon(Icons.close_rounded),
                       onPressed: () => Navigator.of(ctx).pop(),

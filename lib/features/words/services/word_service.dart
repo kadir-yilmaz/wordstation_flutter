@@ -3,6 +3,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/constants/api_constants.dart';
 import '../../../core/network/api_client.dart';
+import '../../../core/network/dio_error_handler.dart';
 import '../../../core/storage/secure_storage_service.dart';
 import '../models/synonym_group_model.dart';
 import '../models/word_model.dart';
@@ -400,16 +401,6 @@ class WordService {
   }
 
   String _extractErrorMessage(DioException e) {
-    if (e.type == DioExceptionType.connectionTimeout ||
-        e.type == DioExceptionType.receiveTimeout) {
-      return 'Sunucu bağlantı zaman aşımı.';
-    }
-    if (e.response?.data != null && e.response!.data is Map) {
-      final data = e.response!.data as Map;
-      return data['message']?.toString() ??
-          data['error']?.toString() ??
-          'İşlem başarısız oldu.';
-    }
-    return 'Bir hata oluştu (${e.response?.statusCode ?? 'Ağ'}).';
+    return DioErrorHandler.extractMessage(e);
   }
 }

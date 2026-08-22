@@ -1,4 +1,5 @@
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../constants/api_constants.dart';
 import '../storage/secure_storage_service.dart';
@@ -19,9 +20,11 @@ final dioProvider = Provider<Dio>((ref) {
         'Content-Type': 'application/json',
         'Accept': 'application/json',
       },
+      extra: kIsWeb ? {'withCredentials': true} : {},
       validateStatus: (status) => status != null && status >= 200 && status < 300,
     ),
   );
+
 
   dio.interceptors.add(
     AuthInterceptor(

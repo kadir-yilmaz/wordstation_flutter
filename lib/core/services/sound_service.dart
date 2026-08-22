@@ -33,12 +33,12 @@ class SoundService {
           AudioContext(
             iOS: AudioContextIOS(
               category: AVAudioSessionCategory.ambient,
-              options: {
+              options: const {
                 AVAudioSessionOptions.mixWithOthers,
                 AVAudioSessionOptions.defaultToSpeaker,
               },
             ),
-            android: AudioContextAndroid(
+            android: const AudioContextAndroid(
               isSpeakerphoneOn: false,
               stayAwake: false,
               contentType: AndroidContentType.sonification,

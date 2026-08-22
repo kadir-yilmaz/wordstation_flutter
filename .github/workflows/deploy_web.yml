@@ -80,6 +80,8 @@ jobs:
           & $msdeployPath -verb:sync `
             "-source:contentPath=$sourcePath" `
             "-dest:contentPath=$site,computerName=$destUrl,userName=$username,password=$password,authType=Basic" `
+            -enableRule:AppOffline `
             -allowUntrusted
 
           Write-Host "Basariyla yayinlandi! -> https://$($secrets.domain)"
+

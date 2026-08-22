@@ -51,12 +51,19 @@ class ProfilePage extends ConsumerWidget {
       body: SafeArea(
         child: ResponsiveContent(
           maxWidth: 700,
-          child: SingleChildScrollView(
-            physics: const BouncingScrollPhysics(),
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-            child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
+          child: RefreshIndicator(
+            color: AppColors.turquoise,
+            onRefresh: () async {
+              await ref.read(profileControllerProvider.notifier).loadProfile();
+            },
+            child: SingleChildScrollView(
+              physics: const AlwaysScrollableScrollPhysics(
+                parent: BouncingScrollPhysics(),
+              ),
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
               // Title
               Text(
                 'Profil ve Ayarlar',
@@ -525,6 +532,7 @@ class ProfilePage extends ConsumerWidget {
         ),
       ),
     ),
+  ),
   );
 }
 

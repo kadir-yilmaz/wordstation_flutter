@@ -1,8 +1,7 @@
 import 'dart:math';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:flutter_tts/flutter_tts.dart';
+import '../../../core/services/tts_service.dart';
 import '../models/word_model.dart';
 
 class SynonymBadgeItem {
@@ -67,15 +66,12 @@ class StudyState {
 
 final studyControllerProvider =
     StateNotifierProvider.autoDispose<StudyController, StudyState>((ref) {
-  final controller = StudyController();
-  ref.onDispose(() {
-    controller.disposeTts();
-  });
-  return controller;
+  final tts = ref.watch(ttsServiceProvider);
+  return StudyController(tts);
 });
 
 class StudyController extends StateNotifier<StudyState> {
-  final FlutterTts _tts = FlutterTts();
+  final TtsService _tts;
   final Random _random = Random();
   List<WordModel> _allWords = [];
 
@@ -92,60 +88,34 @@ class StudyController extends StateNotifier<StudyState> {
     [Color(0xFFF59E0B), Color(0xFFD97706)], // Meaning 6: Amber
   ];
 
-  StudyController() : super(StudyState.empty()) {
-    _initTts();
-  }
-
-  Future<void> _initTts() async {
-    try {
-      if (defaultTargetPlatform == TargetPlatform.iOS) {
-        await _tts.setSharedInstance(true);
-        await _tts.setIosAudioCategory(
-          IosTextToSpeechAudioCategory.playback,
-          [
-            IosTextToSpeechAudioCategoryOptions.defaultToSpeaker,
-            IosTextToSpeechAudioCategoryOptions.allowBluetooth,
-            IosTextToSpeechAudioCategoryOptions.allowBluetoothA2DP,
-            IosTextToSpeechAudioCategoryOptions.mixWithOthers,
-          ],
-          IosTextToSpeechAudioMode.defaultMode,
-        );
-      }
-      await _tts.setLanguage('en-US');
-      await _tts.setSpeechRate(0.5);
-      await _tts.setVolume(1.0);
-      await _tts.setPitch(1.0);
-      await _tts.awaitSpeakCompletion(false);
-
-      _tts.setCompletionHandler(() {
-        if (mounted) state = state.copyWith(isPlayingTts: false);
-      });
-      _tts.setCancelHandler(() {
-        if (mounted) state = state.copyWith(isPlayingTts: false);
-      });
-      _tts.setErrorHandler((_) {
-        if (mounted) state = state.copyWith(isPlayingTts: false);
-      });
-    } catch (_) {}
-  }
+  StudyController(this._tts) : super(StudyState.empty());
 
   void _buildIndex(List<WordModel> words) {
     _meaningIndex.clear();
     _wordMeaningsCache.clear();
 
     for (final w in words) {
-      final meanings = w.tr
-          .split(',')
+      final rawMeanings = w.tr
+          .split(RegExp(r'[,;/]'))
           .map((s) => s.trim().toLowerCase())
           .where((s) => s.isNotEmpty)
           .toList();
+
+      final meanings = <String>{};
+      for (final m in rawMeanings) {
+        final cleaned = m.replaceAll(RegExp(r'\([^)]*\)'), '').trim();
+        if (cleaned.isNotEmpty) {
+          meanings.add(cleaned);
+        }
+        meanings.add(m);
+      }
 
       if (meanings.isEmpty && w.tr.trim().isNotEmpty) {
         meanings.add(w.tr.trim().toLowerCase());
       }
 
       final key = w.id?.toString() ?? '${w.en}_${w.tr}';
-      _wordMeaningsCache[key] = meanings;
+      _wordMeaningsCache[key] = meanings.toList();
 
       for (final m in meanings) {
         _meaningIndex.putIfAbsent(m, () => []).add(w);
@@ -153,9 +123,16 @@ class StudyController extends StateNotifier<StudyState> {
     }
   }
 
-  void initWithWords(List<WordModel> words, {int initialIndex = 0}) {
+  void initWithWords(
+    List<WordModel> words, {
+    int initialIndex = 0,
+    List<WordModel>? allVocabularyWords,
+  }) {
     _allWords = List<WordModel>.from(words);
-    _buildIndex(words);
+    final vocab = allVocabularyWords != null && allVocabularyWords.isNotEmpty
+        ? allVocabularyWords
+        : words;
+    _buildIndex(vocab);
 
     final validIndex = words.isEmpty
         ? 0
@@ -332,44 +309,93 @@ class StudyController extends StateNotifier<StudyState> {
     );
   }
 
+  /// Kelimeyi sil — index'i ve arama durumunu koru
+  void removeWord(dynamic wordId) {
+    // 1. Master listeden çıkar
+    _allWords.removeWhere((w) => w.id == wordId);
+
+    // 2. Şu anki (filtrelenmiş olabilir) listeden çıkar
+    final currentWords = List<WordModel>.from(state.words);
+    currentWords.removeWhere((w) => w.id == wordId);
+
+    if (currentWords.isEmpty) {
+      state = StudyState.empty();
+      return;
+    }
+
+    // 3. Index'i koru — silinen eleman sonuncuysa bir geri git
+    final newIndex = state.currentIndex >= currentWords.length
+        ? currentWords.length - 1
+        : state.currentIndex;
+
+    // 4. Synonym index'ini yeniden oluştur ve güncelle
+    _buildIndex(_allWords);
+    final badges = _findSynonymBadges(currentWords, newIndex);
+
+    state = state.copyWith(
+      words: currentWords,
+      currentIndex: newIndex,
+      isFlipped: false,
+      synonymBadges: badges,
+    );
+  }
+
+  /// Kelimeyi yerinde güncelle — index'i ve arama durumunu koru
+  void updateWordInPlace(WordModel updated) {
+    // 1. Master listede güncelle
+    for (int i = 0; i < _allWords.length; i++) {
+      if (_allWords[i].id == updated.id) {
+        _allWords[i] = updated;
+        break;
+      }
+    }
+
+    // 2. Şu anki (filtrelenmiş) listede güncelle
+    final currentWords = state.words.map((w) {
+      if (w.id == updated.id) return updated;
+      return w;
+    }).toList();
+
+    // 3. Synonym index'ini yeniden oluştur
+    _buildIndex(_allWords);
+    final badges = _findSynonymBadges(currentWords, state.currentIndex);
+
+    state = state.copyWith(
+      words: currentWords,
+      synonymBadges: badges,
+    );
+  }
+
+  /// Yeni kelime ekle — mevcut index'i ve arama durumunu koru
+  void addNewWord(WordModel word) {
+    // 1. Master listeye ekle
+    _allWords.add(word);
+
+    // 2. Synonym index'ini yeniden oluştur
+    _buildIndex(_allWords);
+    final badges = _findSynonymBadges(state.words, state.currentIndex);
+
+    state = state.copyWith(
+      synonymBadges: badges,
+    );
+  }
+
   Future<void> speakCurrent() async {
     final current = state.currentWord;
     if (current == null || current.en.isEmpty) return;
 
-    if (state.isPlayingTts) {
-      await _tts.stop();
-      if (mounted) state = state.copyWith(isPlayingTts: false);
-      return;
-    }
-
-    try {
-      HapticFeedback.lightImpact();
-      if (mounted) state = state.copyWith(isPlayingTts: true);
-      await _tts.stop();
-
-      // Auto-reset timer safety net (max 1.4 seconds for a single word)
-      Future.delayed(const Duration(milliseconds: 1400), () {
-        if (mounted && state.isPlayingTts) {
-          state = state.copyWith(isPlayingTts: false);
+    await _tts.speak(
+      current.en,
+      onStateChanged: () {
+        if (mounted) {
+          state = state.copyWith(isPlayingTts: _tts.isPlaying);
         }
-      });
-
-      await _tts.speak(current.en);
-    } catch (_) {
-      if (mounted) state = state.copyWith(isPlayingTts: false);
-    }
+      },
+    );
   }
 
   Future<void> speakText(String text) async {
     if (text.isEmpty) return;
-    try {
-      HapticFeedback.lightImpact();
-      await _tts.stop();
-      await _tts.speak(text);
-    } catch (_) {}
-  }
-
-  void disposeTts() {
-    _tts.stop();
+    await _tts.speak(text);
   }
 }

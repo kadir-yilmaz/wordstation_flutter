@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../core/network/dio_error_handler.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/widgets/custom_button.dart';
 import '../../../core/widgets/custom_text_field.dart';
 import '../../../core/widgets/loading_overlay.dart';
+import '../../../core/widgets/no_internet_dialog.dart';
 import '../controllers/word_list_controller.dart';
 import '../models/word_model.dart';
 
@@ -81,6 +83,27 @@ class _AddEditWordPageState extends ConsumerState<AddEditWordPage> {
 
     if (success && mounted) {
       Navigator.of(context).pop(word);
+    } else if (!success && mounted) {
+      final err = ref.read(wordListControllerProvider).errorMessage;
+      if (err != null && DioErrorHandler.isNetworkError(err)) {
+        NoInternetDialog.show(
+          context,
+          onRetry: () async {
+            final ok = _isEditing
+                ? await ref
+                    .read(wordListControllerProvider.notifier)
+                    .updateWord(word)
+                : await ref
+                    .read(wordListControllerProvider.notifier)
+                    .addWord(word);
+            if (ok && mounted) {
+              Navigator.of(context).pop(word);
+            } else {
+              throw Exception('Retry failed');
+            }
+          },
+        );
+      }
     }
   }
 
@@ -115,54 +138,80 @@ class _AddEditWordPageState extends ConsumerState<AddEditWordPage> {
 
       if (success && mounted) {
         Navigator.of(context).pop();
+      } else if (!success && mounted) {
+        final err = ref.read(wordListControllerProvider).errorMessage;
+        if (err != null && DioErrorHandler.isNetworkError(err)) {
+          NoInternetDialog.show(
+            context,
+            onRetry: () async {
+              final ok = await ref
+                  .read(wordListControllerProvider.notifier)
+                  .deleteWord(widget.wordToEdit!.id);
+              if (ok && mounted) {
+                Navigator.of(context).pop();
+              } else {
+                throw Exception('Retry failed');
+              }
+            },
+          );
+        }
       }
     }
   }
 
-  Future<String?> _showCreateListDialog(BuildContext context, bool isDark) async {
+  Future<String?> _showCreateListDialog(
+      BuildContext context, bool isDark) async {
     final controller = TextEditingController();
-    return showDialog<String>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-        backgroundColor: isDark ? AppColors.darkSurface : Colors.white,
-        title: const Text('Yeni Liste Oluştur'),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          textCapitalization: TextCapitalization.words,
-          decoration: InputDecoration(
-            hintText: 'Liste Adı (Örn: B2, Phrasal Verbs)',
-            hintStyle: TextStyle(
-              color: isDark ? AppColors.darkTextMuted : AppColors.lightTextMuted,
+    try {
+      return await showDialog<String>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+          backgroundColor: isDark ? AppColors.darkSurface : Colors.white,
+          title: const Text('Yeni Liste Oluştur'),
+          content: TextField(
+            controller: controller,
+            autofocus: true,
+            textCapitalization: TextCapitalization.words,
+            decoration: InputDecoration(
+              hintText: 'Liste Adı (Örn: B2, Phrasal Verbs)',
+              hintStyle: TextStyle(
+                color:
+                    isDark ? AppColors.darkTextMuted : AppColors.lightTextMuted,
+              ),
             ),
           ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: const Text('İptal'),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.turquoise,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10)),
+              ),
+              onPressed: () {
+                final text = controller.text.trim();
+                Navigator.of(ctx).pop(text.isNotEmpty ? text : null);
+              },
+              child: const Text('Ekle'),
+            ),
+          ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('İptal'),
-          ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppColors.turquoise,
-              foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-            ),
-            onPressed: () {
-              final text = controller.text.trim();
-              Navigator.of(ctx).pop(text.isNotEmpty ? text : null);
-            },
-            child: const Text('Ekle'),
-          ),
-        ],
-      ),
-    );
+      );
+    } finally {
+      controller.dispose();
+    }
   }
 
   Widget _buildListDropdown(bool isDark, List<String> availableLists) {
     final options = <String>[...availableLists];
-    if (!options.contains(_selectedListName) && _selectedListName.trim().isNotEmpty) {
+    if (!options.contains(_selectedListName) &&
+        _selectedListName.trim().isNotEmpty) {
       options.insert(0, _selectedListName);
     }
     if (options.isEmpty) {
@@ -181,9 +230,8 @@ class _AddEditWordPageState extends ConsumerState<AddEditWordPage> {
           style: TextStyle(
             fontSize: 14,
             fontWeight: FontWeight.w600,
-            color: isDark
-                ? AppColors.darkTextPrimary
-                : AppColors.lightTextPrimary,
+            color:
+                isDark ? AppColors.darkTextPrimary : AppColors.lightTextPrimary,
           ),
         ),
         const SizedBox(height: 8),
@@ -226,9 +274,11 @@ class _AddEditWordPageState extends ConsumerState<AddEditWordPage> {
                           Expanded(
                             child: Text(
                               name,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
                               style: TextStyle(
-                                fontSize: 15,
-                                fontWeight: FontWeight.w500,
+                                fontSize: 14.5,
+                                fontWeight: FontWeight.w600,
                                 color: isDark
                                     ? AppColors.darkTextPrimary
                                     : AppColors.lightTextPrimary,
@@ -238,21 +288,21 @@ class _AddEditWordPageState extends ConsumerState<AddEditWordPage> {
                         ],
                       ),
                     )),
-                DropdownMenuItem<String>(
+                const DropdownMenuItem<String>(
                   value: '__CREATE_NEW__',
                   child: Row(
                     children: [
-                      const Icon(
+                      Icon(
                         Icons.add_circle_outline_rounded,
                         size: 18,
                         color: Color(0xFF34C759),
                       ),
-                      const SizedBox(width: 10),
-                      const Text(
+                      SizedBox(width: 10),
+                      Text(
                         '+ Yeni Liste Oluştur...',
                         style: TextStyle(
                           fontSize: 15,
-                          fontWeight: FontWeight.w600,
+                          fontWeight: FontWeight.w700,
                           color: Color(0xFF34C759),
                         ),
                       ),
@@ -315,17 +365,18 @@ class _AddEditWordPageState extends ConsumerState<AddEditWordPage> {
         message: _isEditing ? 'Güncelleniyor...' : 'Kaydediliyor...',
         child: SafeArea(
           child: SingleChildScrollView(
+            physics: const BouncingScrollPhysics(),
             padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
             child: Form(
               key: _formKey,
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  // 1. Liste / Kategori Dropdown (En Üstte)
+                  // 1. Liste / Kategori Dropdown
                   _buildListDropdown(isDark, listNames),
                   const SizedBox(height: 18),
 
-                  // 2. İngilizce Kelime (Word)
+                  // 2. İngilizce Kelime
                   CustomTextField(
                     controller: _enController,
                     label: 'İngilizce Kelime (Word)',
@@ -340,7 +391,7 @@ class _AddEditWordPageState extends ConsumerState<AddEditWordPage> {
                   ),
                   const SizedBox(height: 18),
 
-                  // 3. Türkçe Anlamı (Meaning)
+                  // 3. Türkçe Anlamı
                   CustomTextField(
                     controller: _trController,
                     label: 'Türkçe Anlamı (Meaning)',
@@ -355,12 +406,13 @@ class _AddEditWordPageState extends ConsumerState<AddEditWordPage> {
                   ),
                   const SizedBox(height: 18),
 
-                  // 4. Örnek Cümle (Geri Kalan Alan - Tırnak İşareti Yok!)
+                  // 4. Örnek Cümle
                   CustomTextField(
                     controller: _exampleController,
                     label: 'Örnek Cümle (İsteğe bağlı)',
-                    hintText: 'Örn: Smartphones have become ubiquitous in daily life.',
-                    prefixIcon: null, // Tırnak işareti kaldırıldı, tam genişlik
+                    hintText:
+                        'Örn: Smartphones have become ubiquitous in daily life.',
+                    prefixIcon: null,
                     minLines: 4,
                     maxLines: null,
                   ),

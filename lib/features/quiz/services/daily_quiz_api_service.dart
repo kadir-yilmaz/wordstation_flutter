@@ -3,6 +3,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/constants/api_constants.dart';
 import '../../../core/network/api_client.dart';
+import '../../../core/network/dio_error_handler.dart';
 import '../../../core/storage/secure_storage_service.dart';
 import '../models/daily_quiz_plan_model.dart';
 
@@ -41,10 +42,13 @@ class DailyQuizApiService {
       return null;
     } on DioException catch (e) {
       log('DailyQuizApiService.getPlan DioException: ${e.response?.statusCode} -> ${e.response?.data}');
-      return null;
+      if (e.response?.statusCode == 404 || e.response?.statusCode == 204) {
+        return null;
+      }
+      throw Exception(DioErrorHandler.extractMessage(e));
     } catch (e) {
       log('DailyQuizApiService.getPlan Error: $e');
-      return null;
+      rethrow;
     }
   }
 
@@ -145,24 +149,14 @@ class DailyQuizApiService {
       return true;
     } on DioException catch (e) {
       log('DailyQuizApiService.deletePlan DioException: ${e.response?.statusCode} -> ${e.response?.data}');
-      return false;
+      throw Exception(DioErrorHandler.extractMessage(e));
     } catch (e) {
       log('DailyQuizApiService.deletePlan Error: $e');
-      return false;
+      rethrow;
     }
   }
 
   String _extractErrorMessage(DioException e) {
-    if (e.type == DioExceptionType.connectionTimeout ||
-        e.type == DioExceptionType.receiveTimeout) {
-      return 'Sunucu bağlantı zaman aşımı.';
-    }
-    if (e.response?.data != null && e.response!.data is Map) {
-      final data = e.response!.data as Map;
-      return data['message']?.toString() ??
-          data['error']?.toString() ??
-          'İşlem başarısız oldu.';
-    }
-    return 'Bir hata oluştu (${e.response?.statusCode ?? 'Ağ'}).';
+    return DioErrorHandler.extractMessage(e);
   }
 }

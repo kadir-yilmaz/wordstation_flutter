@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../core/network/dio_error_handler.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/widgets/custom_button.dart';
+import '../../../core/widgets/network_error_view.dart';
+import '../../../core/widgets/no_internet_dialog.dart';
 import '../../../core/widgets/responsive_layout.dart';
 import '../controllers/word_list_controller.dart';
 import 'study_session_page.dart';
@@ -93,9 +96,24 @@ class _WordsListPageState extends ConsumerState<WordsListPage> {
                 final text = textController.text.trim();
                 if (text.isNotEmpty) {
                   Navigator.of(ctx).pop();
-                  await ref
+                  final success = await ref
                       .read(wordListControllerProvider.notifier)
                       .createList(text);
+                  if (!success && mounted) {
+                    final err =
+                        ref.read(wordListControllerProvider).errorMessage;
+                    if (err != null && DioErrorHandler.isNetworkError(err)) {
+                      NoInternetDialog.show(
+                        context,
+                        onRetry: () async {
+                          final ok = await ref
+                              .read(wordListControllerProvider.notifier)
+                              .createList(text);
+                          if (!ok) throw Exception('Failed');
+                        },
+                      );
+                    }
+                  }
                 }
               },
               child: const Text('Save'),
@@ -104,6 +122,7 @@ class _WordsListPageState extends ConsumerState<WordsListPage> {
         );
       },
     ).then((_) {
+      textController.dispose();
       if (mounted) _isDialogOpen = false;
     });
   }
@@ -150,9 +169,24 @@ class _WordsListPageState extends ConsumerState<WordsListPage> {
                 final newName = textController.text.trim();
                 if (newName.isNotEmpty) {
                   Navigator.of(ctx).pop();
-                  await ref
+                  final success = await ref
                       .read(wordListControllerProvider.notifier)
                       .renameList(oldName, newName);
+                  if (!success && mounted) {
+                    final err =
+                        ref.read(wordListControllerProvider).errorMessage;
+                    if (err != null && DioErrorHandler.isNetworkError(err)) {
+                      NoInternetDialog.show(
+                        context,
+                        onRetry: () async {
+                          final ok = await ref
+                              .read(wordListControllerProvider.notifier)
+                              .renameList(oldName, newName);
+                          if (!ok) throw Exception('Failed');
+                        },
+                      );
+                    }
+                  }
                 }
               },
               child: const Text('Rename'),
@@ -161,6 +195,7 @@ class _WordsListPageState extends ConsumerState<WordsListPage> {
         );
       },
     ).then((_) {
+      textController.dispose();
       if (mounted) _isDialogOpen = false;
     });
   }
@@ -195,9 +230,24 @@ class _WordsListPageState extends ConsumerState<WordsListPage> {
               ),
               onPressed: () async {
                 Navigator.of(ctx).pop();
-                await ref
+                final success = await ref
                     .read(wordListControllerProvider.notifier)
                     .deleteList(listName);
+                if (!success && mounted) {
+                  final err =
+                      ref.read(wordListControllerProvider).errorMessage;
+                  if (err != null && DioErrorHandler.isNetworkError(err)) {
+                    NoInternetDialog.show(
+                      context,
+                      onRetry: () async {
+                        final ok = await ref
+                            .read(wordListControllerProvider.notifier)
+                            .deleteList(listName);
+                        if (!ok) throw Exception('Failed');
+                      },
+                    );
+                  }
+                }
               },
               child: const Text('Delete'),
             ),
@@ -332,9 +382,15 @@ class _WordsListPageState extends ConsumerState<WordsListPage> {
                                 AppColors.turquoise),
                           ),
                         )
-                      : wordListState.listNames.isEmpty
-                          ? _buildEmptyState(isDark)
-                          : isDesktop
+                      : wordListState.errorMessage != null &&
+                              wordListState.listNames.isEmpty
+                          ? NetworkErrorView(
+                              message: wordListState.errorMessage,
+                              onRetry: wordListNotifier.refresh,
+                            )
+                          : wordListState.listNames.isEmpty
+                              ? _buildEmptyState(isDark)
+                              : isDesktop
                               ? GridView.builder(
                                   physics: const AlwaysScrollableScrollPhysics(
                                     parent: BouncingScrollPhysics(),
@@ -422,6 +478,8 @@ class _WordsListPageState extends ConsumerState<WordsListPage> {
     required VoidCallback onRename,
     required VoidCallback onDelete,
   }) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     return Container(
       decoration: BoxDecoration(
         gradient: LinearGradient(
@@ -487,23 +545,36 @@ class _WordsListPageState extends ConsumerState<WordsListPage> {
                     color: Colors.white,
                     size: 22,
                   ),
-                  color: Colors.white,
+                  color: isDark ? AppColors.darkCardElevated : Colors.white,
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(14),
+                    side: isDark
+                        ? const BorderSide(color: AppColors.darkBorder, width: 0.8)
+                        : BorderSide.none,
                   ),
                   onSelected: (val) {
                     if (val == 'rename') onRename();
                     if (val == 'delete') onDelete();
                   },
                   itemBuilder: (ctx) => [
-                    const PopupMenuItem(
+                    PopupMenuItem(
                       value: 'rename',
                       child: Row(
                         children: [
-                          Icon(Icons.edit_outlined,
-                              size: 18, color: Colors.blue),
-                          SizedBox(width: 10),
-                          Text('Rename List'),
+                          Icon(
+                            Icons.edit_outlined,
+                            size: 18,
+                            color: isDark ? AppColors.info : AppColors.blue,
+                          ),
+                          const SizedBox(width: 10),
+                          Text(
+                            'Rename List',
+                            style: TextStyle(
+                              color: isDark
+                                  ? AppColors.darkTextPrimary
+                                  : AppColors.lightTextPrimary,
+                            ),
+                          ),
                         ],
                       ),
                     ),
@@ -511,11 +582,18 @@ class _WordsListPageState extends ConsumerState<WordsListPage> {
                       value: 'delete',
                       child: Row(
                         children: [
-                          Icon(Icons.delete_outline_rounded,
-                              size: 18, color: Colors.red),
+                          Icon(
+                            Icons.delete_outline_rounded,
+                            size: 18,
+                            color: AppColors.error,
+                          ),
                           SizedBox(width: 10),
-                          Text('Delete List',
-                              style: TextStyle(color: Colors.red)),
+                          Text(
+                            'Delete List',
+                            style: TextStyle(
+                              color: AppColors.error,
+                            ),
+                          ),
                         ],
                       ),
                     ),
@@ -539,57 +617,67 @@ class _WordsListPageState extends ConsumerState<WordsListPage> {
   }
 
   Widget _buildEmptyState(bool isDark) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 40),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Container(
-              width: 80,
-              height: 80,
-              decoration: BoxDecoration(
-                color: isDark
-                    ? AppColors.darkSurface
-                    : AppColors.turquoise.withValues(alpha: 0.12),
-                shape: BoxShape.circle,
-              ),
-              child: const Icon(
-                Icons.menu_book_rounded,
-                size: 40,
-                color: AppColors.turquoise,
+    return LayoutBuilder(
+      builder: (context, constraints) => SingleChildScrollView(
+        physics: const AlwaysScrollableScrollPhysics(
+          parent: BouncingScrollPhysics(),
+        ),
+        child: ConstrainedBox(
+          constraints: BoxConstraints(minHeight: constraints.maxHeight),
+          child: Center(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 40),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Container(
+                    width: 80,
+                    height: 80,
+                    decoration: BoxDecoration(
+                      color: isDark
+                          ? AppColors.darkSurface
+                          : AppColors.turquoise.withValues(alpha: 0.12),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(
+                      Icons.menu_book_rounded,
+                      size: 40,
+                      color: AppColors.turquoise,
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                  Text(
+                    'No Word Lists',
+                    style: TextStyle(
+                      fontSize: 22,
+                      fontWeight: FontWeight.w700,
+                      color: isDark
+                          ? AppColors.darkTextPrimary
+                          : AppColors.lightTextPrimary,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Create your first word list by tapping the + button or pull down to refresh',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: isDark
+                          ? AppColors.darkTextSecondary
+                          : AppColors.lightTextSecondary,
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+                  CustomButton(
+                    text: 'Yeni Liste Oluştur',
+                    prefixIcon: Icons.add_rounded,
+                    variant: ButtonVariant.primary,
+                    onPressed: _showAddListDialog,
+                  ),
+                ],
               ),
             ),
-            const SizedBox(height: 20),
-            Text(
-              'No Word Lists',
-              style: TextStyle(
-                fontSize: 22,
-                fontWeight: FontWeight.w700,
-                color: isDark
-                    ? AppColors.darkTextPrimary
-                    : AppColors.lightTextPrimary,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Create your first word list by tapping the + button',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 14,
-                color: isDark
-                    ? AppColors.darkTextSecondary
-                    : AppColors.lightTextSecondary,
-              ),
-            ),
-            const SizedBox(height: 24),
-            CustomButton(
-              text: 'Yeni Liste Oluştur',
-              prefixIcon: Icons.add_rounded,
-              variant: ButtonVariant.primary,
-              onPressed: _showAddListDialog,
-            ),
-          ],
+          ),
         ),
       ),
     );
