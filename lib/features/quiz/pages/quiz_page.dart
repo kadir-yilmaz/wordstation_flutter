@@ -74,79 +74,80 @@ class _QuizPageState extends ConsumerState<QuizPage> {
           isDark ? AppColors.darkBackground : AppColors.lightBackground,
       body: SafeArea(
         child: ResponsiveContent(
-          maxWidth: 780,
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+          maxWidth: 620,
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              // Page Header
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              // Page Header (Centered, Clean Typography)
+              Column(
                 children: [
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                  Text(
+                    'Kelime Testi',
+                    style: TextStyle(
+                      fontSize: 24,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: -0.4,
+                      color: isDark
+                          ? AppColors.darkTextPrimary
+                          : AppColors.lightTextPrimary,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Kelime dağarcığını test et ve pekiştir',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w500,
+                      color: isDark
+                          ? AppColors.darkTextSecondary
+                          : AppColors.lightTextSecondary,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 18),
+
+              // Segmented Tab Switcher (Centered & Compact)
+              Center(
+                child: Container(
+                  constraints: const BoxConstraints(maxWidth: 380),
+                  padding: const EdgeInsets.all(4),
+                  decoration: BoxDecoration(
+                    color: isDark ? AppColors.darkSurface : const Color(0xFFEBEBF0),
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(
+                      color: isDark ? AppColors.darkBorder : Colors.transparent,
+                      width: 1,
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
                     children: [
-                      Text(
-                        'Kelime Testi',
-                        style: TextStyle(
-                          fontSize: 26,
-                          fontWeight: FontWeight.w800,
-                          color: isDark
-                              ? AppColors.darkTextPrimary
-                              : AppColors.lightTextPrimary,
+                      Expanded(
+                        child: _buildTabButton(
+                          title: 'Quiz Yap',
+                          icon: Icons.quiz_rounded,
+                          isSelected: _activeTabIndex == 0,
+                          isDark: isDark,
+                          onTap: () => setState(() => _activeTabIndex = 0),
                         ),
                       ),
-                      const SizedBox(height: 2),
-                      Text(
-                        'Kelime dağarcığını test et ve pekiştir',
-                        style: TextStyle(
-                          fontSize: 13,
-                          color: isDark
-                              ? AppColors.darkTextSecondary
-                              : AppColors.lightTextSecondary,
+                      Expanded(
+                        child: _buildTabButton(
+                          title: 'Geçmiş Sonuçlar',
+                          icon: Icons.history_rounded,
+                          isSelected: _activeTabIndex == 1,
+                          isDark: isDark,
+                          onTap: () => setState(() => _activeTabIndex = 1),
                         ),
                       ),
                     ],
                   ),
-                ],
-              ),
-              const SizedBox(height: 16),
-
-              // Segmented Tab Switcher (2 Tabs: Quiz Yap & Geçmiş Sonuçlar)
-              Container(
-                padding: const EdgeInsets.all(4),
-                decoration: BoxDecoration(
-                  color: isDark ? AppColors.darkSurface : const Color(0xFFE5E5EA),
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(
-                    color: isDark ? AppColors.darkBorder : Colors.transparent,
-                    width: 1,
-                  ),
-                ),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: _buildTabButton(
-                        title: 'Quiz Yap',
-                        icon: Icons.quiz_rounded,
-                        isSelected: _activeTabIndex == 0,
-                        isDark: isDark,
-                        onTap: () => setState(() => _activeTabIndex = 0),
-                      ),
-                    ),
-                    Expanded(
-                      child: _buildTabButton(
-                        title: 'Geçmiş Sonuçlar',
-                        icon: Icons.history_rounded,
-                        isSelected: _activeTabIndex == 1,
-                        isDark: isDark,
-                        onTap: () => setState(() => _activeTabIndex = 1),
-                      ),
-                    ),
-                  ],
                 ),
               ),
-              const SizedBox(height: 18),
+              const SizedBox(height: 20),
 
               // Body Content
               Expanded(

@@ -5,7 +5,6 @@ import '../../core/theme/app_colors.dart';
 import '../auth/controllers/auth_controller.dart';
 import '../auth/pages/login_page.dart';
 import '../profile/pages/profile_page.dart';
-import '../quiz/controllers/quiz_controller.dart';
 import '../quiz/pages/daily_plan_page.dart';
 import '../quiz/pages/quiz_page.dart';
 import '../words/controllers/word_list_controller.dart';
@@ -52,22 +51,12 @@ class _MainNavigationPageState extends ConsumerState<MainNavigationPage>
 
   void _onItemTapped(int index) {
     if (_currentIndex == index && index == 0) {
-      // If tapping My Lists again, pop to root of list and refresh
+      // Sadece aynı sekmeye (My Lists) tekrar tıklandığında kök sayfaya dön
       _myListsNavKey.currentState?.popUntil((route) => route.isFirst);
-      ref.read(wordListControllerProvider.notifier).refresh();
     } else if (_currentIndex != index) {
-      HapticFeedback.selectionClick();
       setState(() {
         _currentIndex = index;
       });
-      // Optimize: Only fetch list data for relevant tabs
-      if (index == 0) {
-        ref.read(wordListControllerProvider.notifier).refresh();
-      } else if (index == 1) {
-        ref.invalidate(synonymGroupsFutureProvider);
-      } else if (index == 2 || index == 3) {
-        ref.read(quizControllerProvider.notifier).loadInitialData();
-      }
     }
   }
 
@@ -136,9 +125,7 @@ class _MainNavigationPageState extends ConsumerState<MainNavigationPage>
             : content,
         bottomNavigationBar: isDesktop
             ? null
-            : AnimatedContainer(
-                duration: const Duration(milliseconds: 300),
-                curve: Curves.easeInOutCubic,
+            : Container(
                 decoration: BoxDecoration(
                   color: isDark ? AppColors.darkSurface : Colors.white,
                   border: Border(
@@ -352,13 +339,12 @@ class _MainNavigationPageState extends ConsumerState<MainNavigationPage>
   }) {
     final isSelected = _currentIndex == index;
 
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
         onTap: () => _onItemTapped(index),
-        borderRadius: BorderRadius.circular(12),
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 200),
+        child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
           decoration: BoxDecoration(
             color: isSelected
@@ -404,31 +390,33 @@ class _MainNavigationPageState extends ConsumerState<MainNavigationPage>
     final color = isSelected ? activeColor : inactiveColor;
 
     return Expanded(
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
+      child: MouseRegion(
+        cursor: SystemMouseCursors.click,
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
           onTap: () => _onItemTapped(index),
-          splashColor: Colors.transparent,
-          highlightColor: Colors.transparent,
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(
-                icon,
-                size: 24,
-                color: color,
-              ),
-              const SizedBox(height: 3),
-              Text(
-                label,
-                style: TextStyle(
-                  fontSize: 10.5,
-                  fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
+          child: SizedBox(
+            height: 52,
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(
+                  icon,
+                  size: 24,
                   color: color,
-                  letterSpacing: -0.1,
                 ),
-              ),
-            ],
+                const SizedBox(height: 3),
+                Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: 10.5,
+                    fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
+                    color: color,
+                    letterSpacing: -0.1,
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),

@@ -4,7 +4,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../words/controllers/word_list_controller.dart';
 import '../../words/models/word_model.dart';
-import '../../words/pages/study_session_page.dart';
 import '../controllers/quiz_controller.dart';
 import '../models/quiz_history_model.dart';
 import '../pages/quiz_history_page.dart';
@@ -191,7 +190,7 @@ class QuizHistoryView extends ConsumerWidget {
                     ),
                     padding: const EdgeInsets.only(bottom: 24),
                     itemCount: historyList.length,
-                    separatorBuilder: (_, _) => const SizedBox(height: 8),
+                    separatorBuilder: (_, _) => const SizedBox(height: 12),
                     itemBuilder: (context, idx) {
                       final entry = historyList[idx];
                       return _buildCompactHistoryRow(
@@ -219,167 +218,158 @@ class QuizHistoryView extends ConsumerWidget {
     final isSuccess = entry.percentage >= 70;
     final isToday = _isToday(entry.date);
 
-    return InkWell(
-      onTap: () {
-        HapticFeedback.selectionClick();
-        showQuizHistoryDetailModal(context, entry, isDark, allWords);
-      },
-      borderRadius: BorderRadius.circular(14),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-        decoration: BoxDecoration(
-          color: isDark ? AppColors.darkSurface : Colors.white,
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(
-            color: isToday && isDailyQuiz
-                ? AppColors.turquoise
-                : (isDark ? AppColors.darkBorder : AppColors.lightBorder),
-            width: isToday && isDailyQuiz ? 1.4 : 1,
-          ),
-        ),
-        child: Row(
-          children: [
-            // Slim Percentage Pill
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-              decoration: BoxDecoration(
-                color: (isSuccess ? AppColors.success : AppColors.orange)
-                    .withValues(alpha: 0.12),
-                borderRadius: BorderRadius.circular(8),
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      child: GestureDetector(
+        onTap: () {
+          HapticFeedback.selectionClick();
+          showQuizHistoryDetailModal(context, entry, isDark, allWords);
+        },
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
+          decoration: BoxDecoration(
+            color: isDark ? AppColors.darkSurface : Colors.white,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: isToday && isDailyQuiz
+                  ? AppColors.turquoise
+                  : (isDark ? AppColors.darkBorder : AppColors.lightBorder),
+              width: isToday && isDailyQuiz ? 1.5 : 1,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: isDark ? 0.15 : 0.03),
+                blurRadius: 10,
+                offset: const Offset(0, 3),
               ),
-              child: Text(
-                '%${entry.percentage}',
-                style: TextStyle(
-                  fontSize: 12.5,
-                  fontWeight: FontWeight.w800,
-                  color: isSuccess ? AppColors.success : AppColors.orange,
+            ],
+          ),
+          child: Row(
+            children: [
+              // 1. Modern Percentage Badge
+              Container(
+                width: 48,
+                height: 48,
+                decoration: BoxDecoration(
+                  color: (isSuccess ? AppColors.success : AppColors.orange)
+                      .withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Center(
+                  child: Text(
+                    '%${entry.percentage}',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w800,
+                      color: isSuccess ? AppColors.success : AppColors.orange,
+                    ),
+                  ),
                 ),
               ),
-            ),
-            const SizedBox(width: 12),
+              const SizedBox(width: 16),
 
-            // Title & Date
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Row(
-                    children: [
-                      if (isToday && isDailyQuiz) ...[
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 6, vertical: 1.5),
-                          decoration: BoxDecoration(
-                            color: AppColors.turquoise,
-                            borderRadius: BorderRadius.circular(5),
-                          ),
-                          child: const Text(
-                            'BUGÜN',
-                            style: TextStyle(
-                              fontSize: 9,
-                              fontWeight: FontWeight.w800,
-                              color: Colors.white,
-                              letterSpacing: 0.5,
+              // 2. Title & Date Information
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Row(
+                      children: [
+                        if (isToday && isDailyQuiz) ...[
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: AppColors.turquoise,
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: const Text(
+                              'BUGÜN',
+                              style: TextStyle(
+                                fontSize: 9.5,
+                                fontWeight: FontWeight.w800,
+                                color: Colors.white,
+                                letterSpacing: 0.4,
+                              ),
                             ),
                           ),
-                        ),
-                        const SizedBox(width: 6),
-                      ],
-                      Flexible(
-                        child: Text(
-                          entry.title,
-                          style: TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w700,
-                            color: isDark
-                                ? AppColors.darkTextPrimary
-                                : AppColors.lightTextPrimary,
+                          const SizedBox(width: 8),
+                        ],
+                        Flexible(
+                          child: Text(
+                            entry.title,
+                            style: TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w700,
+                              color: isDark
+                                  ? AppColors.darkTextPrimary
+                                  : AppColors.lightTextPrimary,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                           ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      dateStr,
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w500,
+                        color: isDark
+                            ? AppColors.darkTextSecondary
+                            : AppColors.lightTextSecondary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
+              const SizedBox(width: 12),
+
+              // 3. Score & Chevron Icon (No Study Button)
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        '${entry.correctCount} / ${entry.totalQuestions} Doğru',
+                        style: const TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w800,
+                          color: AppColors.turquoise,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        '${entry.wrongCount} Yanlış',
+                        style: TextStyle(
+                          fontSize: 11.5,
+                          fontWeight: FontWeight.w500,
+                          color: isDark
+                              ? AppColors.darkTextMuted
+                              : AppColors.lightTextMuted,
                         ),
                       ),
                     ],
                   ),
-                  const SizedBox(height: 2),
-                  Text(
-                    dateStr,
-                    style: TextStyle(
-                      fontSize: 11.5,
-                      color: isDark
-                          ? AppColors.darkTextSecondary
-                          : AppColors.lightTextSecondary,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-
-            const SizedBox(width: 8),
-
-            // Score & Correct/Wrong count
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  '${entry.correctCount} / ${entry.totalQuestions} Doğru',
-                  style: const TextStyle(
-                    fontSize: 12.5,
-                    fontWeight: FontWeight.w800,
-                    color: AppColors.turquoise,
-                  ),
-                ),
-                const SizedBox(height: 1),
-                Text(
-                  '${entry.wrongCount} Yanlış',
-                  style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w500,
+                  const SizedBox(width: 10),
+                  Icon(
+                    Icons.chevron_right_rounded,
+                    size: 20,
                     color: isDark
                         ? AppColors.darkTextMuted
                         : AppColors.lightTextMuted,
                   ),
-                ),
-              ],
-            ),
-            const SizedBox(width: 4),
-
-            // Study Flashcards Button
-            if (entry.results.isNotEmpty)
-              IconButton(
-                icon: const Icon(
-                  Icons.auto_stories_rounded,
-                  size: 20,
-                  color: Color(0xFF34C759),
-                ),
-                tooltip: 'Kelimeleri Çalış',
-                visualDensity: VisualDensity.compact,
-                padding: EdgeInsets.zero,
-                constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
-                onPressed: () {
-                  HapticFeedback.selectionClick();
-                  final words = entry.results.map((r) => r.word).toList();
-                  Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (_) => StudySessionPage(
-                        words: words,
-                        listTitle: entry.title,
-                        showSearchBar: false,
-                        isReadOnly: true,
-                      ),
-                    ),
-                  );
-                },
-              )
-            else
-              const Icon(
-                Icons.chevron_right_rounded,
-                size: 18,
-                color: Color(0xFF8E8E93),
+                ],
               ),
-          ],
+            ],
+          ),
         ),
       ),
     );
