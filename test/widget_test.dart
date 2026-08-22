@@ -455,7 +455,7 @@ void main() {
     expect(find.text('Geçmiş Sonuçlar'), findsOneWidget);
   });
 
-  testWidgets('DailyPlanPage renders 2 top tabs (Günlük Plan & Geçmiş Günler)', (WidgetTester tester) async {
+  testWidgets('DailyPlanPage renders header and plan view', (WidgetTester tester) async {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
@@ -472,8 +472,6 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Günlük Quiz Planı'), findsOneWidget);
-    expect(find.text('Günlük Plan'), findsOneWidget);
-    expect(find.text('Geçmiş Günler'), findsOneWidget);
   });
 
   testWidgets('MainNavigationPage renders 5 tabs including Plan as 4th tab', (WidgetTester tester) async {

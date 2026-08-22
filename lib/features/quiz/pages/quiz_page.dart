@@ -176,9 +176,8 @@ class _QuizPageState extends ConsumerState<QuizPage> {
         onTap();
       },
       borderRadius: BorderRadius.circular(12),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        padding: const EdgeInsets.symmetric(vertical: 10),
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 9, horizontal: 6),
         decoration: BoxDecoration(
           color: isSelected
               ? (isDark ? const Color(0xFF2C2C2E) : Colors.white)
@@ -196,6 +195,7 @@ class _QuizPageState extends ConsumerState<QuizPage> {
         ),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
+          mainAxisSize: MainAxisSize.min,
           children: [
             Icon(
               icon,
@@ -207,16 +207,20 @@ class _QuizPageState extends ConsumerState<QuizPage> {
                       : AppColors.lightTextSecondary),
             ),
             const SizedBox(width: 6),
-            Text(
-              title,
-              style: TextStyle(
-                fontSize: 13,
-                fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
-                color: isSelected
-                    ? (isDark ? Colors.white : AppColors.lightTextPrimary)
-                    : (isDark
-                        ? AppColors.darkTextSecondary
-                        : AppColors.lightTextSecondary),
+            Flexible(
+              child: Text(
+                title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+                  color: isSelected
+                      ? (isDark ? Colors.white : AppColors.lightTextPrimary)
+                      : (isDark
+                          ? AppColors.darkTextSecondary
+                          : AppColors.lightTextSecondary),
+                ),
               ),
             ),
           ],
