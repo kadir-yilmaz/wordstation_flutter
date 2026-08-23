@@ -246,6 +246,39 @@ void main() {
       expect(controller.state.currentIndex, 1);
     });
 
+    test('Completing last question marks quiz done without clearing questions',
+        () async {
+      final sampleWords = [
+        const WordModel(id: 1, en: 'apple', tr: 'elma'),
+        const WordModel(id: 2, en: 'banana', tr: 'muz'),
+        const WordModel(id: 3, en: 'orange', tr: 'portakal'),
+        const WordModel(id: 4, en: 'grape', tr: 'üzüm'),
+      ];
+
+      final soundService = SoundService(enableAudio: false);
+      final controller = QuizController(
+        sampleWords,
+        soundService: soundService,
+      );
+      controller.generateQuiz(questionCount: 4, englishToTurkish: true);
+
+      while (!controller.state.isQuizCompleted) {
+        final currentQ = controller.state.currentQuestion!;
+        await controller.selectAnswer(
+          currentQ.correctAnswer,
+          delay: Duration.zero,
+        );
+      }
+
+      expect(controller.state.isQuizCompleted, isTrue);
+      expect(controller.state.questions, isNotEmpty);
+      expect(controller.state.results.length, 4);
+
+      controller.resetToSetup();
+      expect(controller.state.isQuizCompleted, isFalse);
+      expect(controller.state.questions, isEmpty);
+    });
+
     test('Daily Quiz generation and title format', () {
       final sampleWords = [
         const WordModel(id: 1, en: 'apple', tr: 'elma'),

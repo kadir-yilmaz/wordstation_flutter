@@ -50,20 +50,20 @@ class _DailyPlanPageState extends ConsumerState<DailyPlanPage> {
     final quizNotifier = ref.read(quizControllerProvider.notifier);
     final wordListState = ref.watch(wordListControllerProvider);
 
-    // If an active daily quiz is in progress, show active quiz view
-    if (quizState.isDailyQuiz && quizState.questions.isNotEmpty) {
-      return ActiveQuizView(
-        quizState: quizState,
-        quizNotifier: quizNotifier,
-      );
-    }
-
-    // If daily quiz was completed, show result view
+    // Completed quizzes still keep questions in state, so results must
+    // be checked before the in-progress view.
     if (quizState.isDailyQuiz && quizState.isQuizCompleted) {
       return QuizResultView(
         quizState: quizState,
         quizNotifier: quizNotifier,
         allWords: wordListState.words,
+      );
+    }
+
+    if (quizState.isDailyQuiz && quizState.questions.isNotEmpty) {
+      return ActiveQuizView(
+        quizState: quizState,
+        quizNotifier: quizNotifier,
       );
     }
 

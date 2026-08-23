@@ -5,6 +5,7 @@ import '../../core/theme/app_colors.dart';
 import '../auth/controllers/auth_controller.dart';
 import '../auth/pages/login_page.dart';
 import '../profile/pages/profile_page.dart';
+import '../quiz/controllers/quiz_controller.dart';
 import '../quiz/pages/daily_plan_page.dart';
 import '../quiz/pages/quiz_page.dart';
 import '../words/controllers/word_list_controller.dart';
@@ -105,6 +106,15 @@ class _MainNavigationPageState extends ConsumerState<MainNavigationPage>
             _myListsNavKey.currentState!.canPop()) {
           _myListsNavKey.currentState!.pop();
           return;
+        }
+        // Quiz and daily-plan tabs share one controller. Back should leave
+        // the active/result quiz and return to that tab's setup screen.
+        if (_currentIndex == 2 || _currentIndex == 3) {
+          final quiz = ref.read(quizControllerProvider);
+          if (quiz.questions.isNotEmpty || quiz.isQuizCompleted) {
+            ref.read(quizControllerProvider.notifier).resetToSetup();
+            return;
+          }
         }
         if (_currentIndex != 0) {
           setState(() {

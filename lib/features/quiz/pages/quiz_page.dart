@@ -52,20 +52,20 @@ class _QuizPageState extends ConsumerState<QuizPage> {
       _selectedLists.add(wordListState.listNames.first);
     }
 
-    // If an active custom quiz is in progress, show active quiz view
-    if (!quizState.isDailyQuiz && quizState.questions.isNotEmpty) {
-      return ActiveQuizView(
-        quizState: quizState,
-        quizNotifier: quizNotifier,
-      );
-    }
-
-    // If custom quiz was completed, show result view
+    // Completed quizzes still keep questions in state, so results must
+    // be checked before the in-progress view.
     if (!quizState.isDailyQuiz && quizState.isQuizCompleted) {
       return QuizResultView(
         quizState: quizState,
         quizNotifier: quizNotifier,
         allWords: wordListState.words,
+      );
+    }
+
+    if (!quizState.isDailyQuiz && quizState.questions.isNotEmpty) {
+      return ActiveQuizView(
+        quizState: quizState,
+        quizNotifier: quizNotifier,
       );
     }
 

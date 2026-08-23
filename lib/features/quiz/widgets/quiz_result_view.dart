@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/theme/app_colors.dart';
+import '../../../core/widgets/custom_button.dart';
 import '../../../core/widgets/word_detail_bottom_sheet.dart';
 import '../../words/models/word_model.dart';
 import '../controllers/quiz_controller.dart';
@@ -181,6 +182,15 @@ class QuizResultView extends ConsumerWidget {
                         allWords,
                       );
                     },
+                  ),
+
+                  const SizedBox(height: 16),
+
+                  CustomButton(
+                    text: 'Quiz Ekranına Dön',
+                    prefixIcon: Icons.arrow_back_rounded,
+                    variant: ButtonVariant.primary,
+                    onPressed: () => quizNotifier.resetToSetup(),
                   ),
 
                   const SizedBox(height: 24),
