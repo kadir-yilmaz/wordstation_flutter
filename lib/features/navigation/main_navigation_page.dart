@@ -52,15 +52,9 @@ class _MainNavigationShellState extends ConsumerState<MainNavigationShell>
     }
   }
 
-  final List<int> _tabHistory = [0];
-
   int get _currentIndex => widget.navigationShell.currentIndex;
 
   void _onItemTapped(int index) {
-    if (index != _currentIndex) {
-      _tabHistory.remove(index);
-      _tabHistory.add(index);
-    }
     // go_router'ın branch geçiş mekanizması
     widget.navigationShell.goBranch(
       index,
@@ -93,8 +87,7 @@ class _MainNavigationShellState extends ConsumerState<MainNavigationShell>
             return;
           }
         }
-        // 2. Quiz and daily-plan tabs share one controller. Back should leave
-        // the active/result quiz and return to that tab's setup screen.
+        // 2. Quiz ve daily-plan sekmelerinde aktif test veya sonuç ekranı açıksa, ana sekme durumuna dön
         if (_currentIndex == 2 || _currentIndex == 3) {
           final quiz = ref.read(quizControllerProvider);
           if (quiz.questions.isNotEmpty || quiz.isQuizCompleted) {
@@ -102,21 +95,7 @@ class _MainNavigationShellState extends ConsumerState<MainNavigationShell>
             return;
           }
         }
-        // 3. Sekmeler arası geçmiş (Tab History): Kullanıcının en son geldiği sekmeye dön
-        if (_tabHistory.length > 1) {
-          _tabHistory.removeLast();
-          final prevIndex = _tabHistory.last;
-          widget.navigationShell.goBranch(prevIndex);
-          return;
-        }
-        // 4. Sekme geçmişi tükendi ama 0. sekmede değilsek ana sekmeye dön
-        if (_currentIndex != 0) {
-          _tabHistory.clear();
-          _tabHistory.add(0);
-          _onItemTapped(0);
-          return;
-        }
-        // 5. Ana sekmedeyiz ve geri gidilecek rota kalmadı → uygulamadan çık
+        // 3. Kullanıcı hangi sekmede ise orada kalır; sekmeler arası geçmişe atlanmaz!
         SystemNavigator.pop();
       },
       child: Scaffold(

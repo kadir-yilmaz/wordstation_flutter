@@ -789,7 +789,7 @@ void main() {
     expect(find.text('My Lists'), findsOneWidget);
   });
 
-  testWidgets('MainNavigationShell tab history navigates back through visited tabs', (WidgetTester tester) async {
+  testWidgets('MainNavigationShell back button stays on selected tab and does not jump across tabs', (WidgetTester tester) async {
     final navKey0 = GlobalKey<NavigatorState>();
     final navKey1 = GlobalKey<NavigatorState>();
     final navKey2 = GlobalKey<NavigatorState>();
@@ -863,8 +863,9 @@ void main() {
     expect(popHandled, isTrue);
     await tester.pumpAndSettle();
 
-    // Verify it returned to Words Tab (previous tab in history)!
-    expect(find.text('Words Tab'), findsOneWidget);
+    // Verify it stays on Plan Tab and does NOT jump back to Words Tab or any other tab!
+    expect(find.text('Plan Tab'), findsOneWidget);
+    expect(find.text('Words Tab'), findsNothing);
   });
 
   testWidgets('DailyPlanPage header back button returns from sub-screen to plans list', (WidgetTester tester) async {
