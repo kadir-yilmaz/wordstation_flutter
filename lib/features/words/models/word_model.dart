@@ -16,37 +16,68 @@ class WordModel {
   });
 
   factory WordModel.fromJson(Map<String, dynamic> json) {
-    // Helper to find value case-insensitively
-    dynamic findVal(List<String> keys) {
-      for (final key in keys) {
-        if (json.containsKey(key) && json[key] != null) {
-          return json[key];
-        }
-      }
-      // Check lowercase matching
-      for (final entry in json.entries) {
-        for (final key in keys) {
-          if (entry.key.toLowerCase() == key.toLowerCase() && entry.value != null) {
-            return entry.value;
-          }
-        }
-      }
-      return null;
-    }
+    // Doğrudan O(1) anahtar kontrolü — döngüsüz, son derece hızlı
+    final id = json['id'] ??
+        json['Id'] ??
+        json['ID'] ??
+        json['_id'] ??
+        json['wordId'] ??
+        json['WordId'];
 
-    final id = findVal(['id', 'Id', '_id', 'ID', 'wordId', 'WordId']);
-    final en = (findVal(['en', 'En', 'EN', 'english', 'English', 'word', 'Word', 'text', 'Text']) ?? '').toString().trim();
-    final tr = (findVal(['tr', 'Tr', 'TR', 'turkish', 'Turkish', 'meaning', 'Meaning', 'translation', 'Translation']) ?? '').toString().trim();
-    final example = findVal(['example', 'Example', 'sentence', 'Sentence', 'sample', 'Sample'])?.toString().trim();
-    final listName = (findVal(['listName', 'ListName', 'list', 'List', 'category', 'Category', 'tag', 'Tag', 'group', 'Group']) ?? 'General').toString().trim();
-    final userId = findVal(['userId', 'UserId', 'user_id', 'User_Id']);
+    final rawEn = json['en'] ??
+        json['En'] ??
+        json['english'] ??
+        json['English'] ??
+        json['word'] ??
+        json['Word'] ??
+        json['text'] ??
+        json['Text'] ??
+        json['EN'];
+
+    final rawTr = json['tr'] ??
+        json['Tr'] ??
+        json['turkish'] ??
+        json['Turkish'] ??
+        json['meaning'] ??
+        json['Meaning'] ??
+        json['translation'] ??
+        json['Translation'] ??
+        json['TR'];
+
+    final rawExample = json['example'] ??
+        json['Example'] ??
+        json['sentence'] ??
+        json['Sentence'] ??
+        json['sample'] ??
+        json['Sample'];
+
+    final rawListName = json['listName'] ??
+        json['ListName'] ??
+        json['category'] ??
+        json['Category'] ??
+        json['list'] ??
+        json['List'] ??
+        json['tag'] ??
+        json['Tag'] ??
+        json['group'] ??
+        json['Group'];
+
+    final userId = json['userId'] ??
+        json['UserId'] ??
+        json['user_id'] ??
+        json['User_Id'];
+
+    final en = (rawEn ?? '').toString().trim();
+    final tr = (rawTr ?? '').toString().trim();
+    final exampleStr = rawExample?.toString().trim();
+    final listNameStr = (rawListName ?? 'General').toString().trim();
 
     return WordModel(
       id: id,
       en: en,
       tr: tr,
-      example: example != null && example.isNotEmpty ? example : null,
-      listName: listName.isNotEmpty ? listName : 'General',
+      example: (exampleStr != null && exampleStr.isNotEmpty) ? exampleStr : null,
+      listName: listNameStr.isNotEmpty ? listNameStr : 'General',
       userId: userId,
     );
   }

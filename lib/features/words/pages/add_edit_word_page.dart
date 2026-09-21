@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import '../../../core/network/dio_error_handler.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/widgets/custom_button.dart';
@@ -82,7 +83,7 @@ class _AddEditWordPageState extends ConsumerState<AddEditWordPage> {
     setState(() => _isLoading = false);
 
     if (success && mounted) {
-      Navigator.of(context).pop(word);
+      context.pop(word);
     } else if (!success && mounted) {
       final err = ref.read(wordListControllerProvider).errorMessage;
       if (err != null && DioErrorHandler.isNetworkError(err)) {
@@ -97,7 +98,7 @@ class _AddEditWordPageState extends ConsumerState<AddEditWordPage> {
                     .read(wordListControllerProvider.notifier)
                     .addWord(word);
             if (ok && mounted) {
-              Navigator.of(context).pop(word);
+              context.pop(word);
             } else {
               throw Exception('Retry failed');
             }
@@ -137,7 +138,7 @@ class _AddEditWordPageState extends ConsumerState<AddEditWordPage> {
       setState(() => _isLoading = false);
 
       if (success && mounted) {
-        Navigator.of(context).pop();
+        context.pop();
       } else if (!success && mounted) {
         final err = ref.read(wordListControllerProvider).errorMessage;
         if (err != null && DioErrorHandler.isNetworkError(err)) {
@@ -148,7 +149,7 @@ class _AddEditWordPageState extends ConsumerState<AddEditWordPage> {
                   .read(wordListControllerProvider.notifier)
                   .deleteWord(widget.wordToEdit!.id);
               if (ok && mounted) {
-                Navigator.of(context).pop();
+                context.pop();
               } else {
                 throw Exception('Retry failed');
               }
@@ -344,7 +345,7 @@ class _AddEditWordPageState extends ConsumerState<AddEditWordPage> {
       appBar: AppBar(
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 20),
-          onPressed: () => Navigator.of(context).pop(),
+          onPressed: () => context.pop(),
         ),
         title: Text(
           _isEditing ? 'Kelimeyi Düzenle' : 'Yeni Kelime Ekle',

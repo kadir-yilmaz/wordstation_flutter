@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/widgets/word_detail_bottom_sheet.dart';
 import '../../words/controllers/word_list_controller.dart';
 import '../../words/models/word_model.dart';
-import '../../words/pages/study_session_page.dart';
 import '../controllers/quiz_controller.dart';
 import '../models/quiz_history_model.dart';
 
@@ -39,7 +39,7 @@ class QuizHistoryPage extends ConsumerWidget {
         elevation: 0,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_ios_new_rounded),
-          onPressed: () => Navigator.of(context).pop(),
+          onPressed: () => context.pop(),
         ),
         title: Text(
           title,
@@ -299,16 +299,12 @@ class QuizHistoryPage extends ConsumerWidget {
                 onPressed: () {
                   HapticFeedback.selectionClick();
                   final words = entry.results.map((r) => r.word).toList();
-                  Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (_) => StudySessionPage(
-                        words: words,
-                        listTitle: entry.title,
-                        showSearchBar: false,
-                        isReadOnly: true,
-                      ),
-                    ),
-                  );
+                  context.push('/study', extra: {
+                    'words': words,
+                    'listTitle': entry.title,
+                    'showSearchBar': false,
+                    'isReadOnly': true,
+                  });
                 },
               )
             else
@@ -444,16 +440,12 @@ void showQuizHistoryDetailModal(
                         onPressed: () {
                           Navigator.of(ctx).pop();
                           final words = entry.results.map((r) => r.word).toList();
-                          Navigator.of(context).push(
-                            MaterialPageRoute(
-                              builder: (_) => StudySessionPage(
-                                words: words,
-                                listTitle: entry.title,
-                                showSearchBar: false,
-                                isReadOnly: true,
-                              ),
-                            ),
-                          );
+                          context.push('/study', extra: {
+                            'words': words,
+                            'listTitle': entry.title,
+                            'showSearchBar': false,
+                            'isReadOnly': true,
+                          });
                         },
                       ),
                       const SizedBox(width: 8),

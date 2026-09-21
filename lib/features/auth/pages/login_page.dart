@@ -1,14 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/widgets/custom_button.dart';
 import '../../../core/widgets/custom_text_field.dart';
 import '../../../core/widgets/loading_overlay.dart';
-import '../../navigation/main_navigation_page.dart';
-import '../../quiz/controllers/quiz_controller.dart';
-import '../../words/controllers/word_list_controller.dart';
 import '../controllers/auth_controller.dart';
-import 'register_page.dart';
 
 class LoginPage extends ConsumerStatefulWidget {
   const LoginPage({super.key});
@@ -33,32 +30,17 @@ class _LoginPageState extends ConsumerState<LoginPage> {
     if (!_formKey.currentState!.validate()) return;
 
     FocusScope.of(context).unfocus();
-    final success = await ref.read(authControllerProvider.notifier).login(
+    await ref.read(authControllerProvider.notifier).login(
           _emailController.text,
           _passwordController.text,
         );
-
-    if (success && mounted) {
-      ref.read(wordListControllerProvider.notifier).loadInitialData();
-      ref.read(quizControllerProvider.notifier).loadInitialData();
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute(builder: (_) => const MainNavigationPage()),
-      );
-    }
+    // Auth state değişince GoRouter.redirect otomatik yönlendirir
   }
 
   Future<void> _handleGoogleLogin() async {
     FocusScope.of(context).unfocus();
-    final success =
-        await ref.read(authControllerProvider.notifier).loginWithGoogle();
-
-    if (success && mounted) {
-      ref.read(wordListControllerProvider.notifier).loadInitialData();
-      ref.read(quizControllerProvider.notifier).loadInitialData();
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute(builder: (_) => const MainNavigationPage()),
-      );
-    }
+    await ref.read(authControllerProvider.notifier).loginWithGoogle();
+    // Auth state değişince GoRouter.redirect otomatik yönlendirir
   }
 
   @override
@@ -311,13 +293,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                           ),
                           const SizedBox(width: 6),
                           GestureDetector(
-                            onTap: () {
-                              Navigator.of(context).push(
-                                MaterialPageRoute(
-                                  builder: (_) => const RegisterPage(),
-                                ),
-                              );
-                            },
+                            onTap: () => context.push('/register'),
                             child: const Text(
                               'Kayıt Ol',
                               style: TextStyle(

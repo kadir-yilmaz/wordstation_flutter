@@ -1,39 +1,39 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import '../../core/theme/app_colors.dart';
-import '../auth/controllers/auth_controller.dart';
-import '../auth/pages/login_page.dart';
-import '../profile/pages/profile_page.dart';
 import '../quiz/controllers/quiz_controller.dart';
-import '../quiz/pages/daily_plan_page.dart';
-import '../quiz/pages/quiz_page.dart';
 import '../words/controllers/word_list_controller.dart';
 import '../words/pages/synonyms_page.dart';
-import '../words/pages/words_list_page.dart';
 
-class MainNavigationPage extends ConsumerStatefulWidget {
-  final int initialIndex;
+/// go_router [StatefulShellRoute] tarafından kullanılan shell widget.
+/// Bottom navigation bar ve desktop sidebar UI'ını sağlar.
+/// Tab içerikleri [navigationShell] tarafından yönetilir.
+class MainNavigationShell extends ConsumerStatefulWidget {
+  final StatefulNavigationShell navigationShell;
 
-  const MainNavigationPage({
+  const MainNavigationShell({
     super.key,
-    this.initialIndex = 0,
+    required this.navigationShell,
   });
 
   @override
-  ConsumerState<MainNavigationPage> createState() => _MainNavigationPageState();
+  ConsumerState<MainNavigationShell> createState() =>
+      _MainNavigationShellState();
 }
 
-class _MainNavigationPageState extends ConsumerState<MainNavigationPage>
+class _MainNavigationShellState extends ConsumerState<MainNavigationShell>
     with WidgetsBindingObserver {
-  late int _currentIndex;
-  final GlobalKey<NavigatorState> _myListsNavKey = GlobalKey<NavigatorState>();
-
   @override
   void initState() {
     super.initState();
-    _currentIndex = widget.initialIndex;
     WidgetsBinding.instance.addObserver(this);
+    // İlk veri yüklemesi — shell mount olduğunda
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ref.read(wordListControllerProvider.notifier).loadInitialData();
+      ref.read(quizControllerProvider.notifier).loadInitialData();
+    });
   }
 
   @override
@@ -50,28 +50,21 @@ class _MainNavigationPageState extends ConsumerState<MainNavigationPage>
     }
   }
 
+  int get _currentIndex => widget.navigationShell.currentIndex;
+
   void _onItemTapped(int index) {
-    if (_currentIndex == index && index == 0) {
-      // Sadece aynı sekmeye (My Lists) tekrar tıklandığında kök sayfaya dön
-      _myListsNavKey.currentState?.popUntil((route) => route.isFirst);
-    } else if (_currentIndex != index) {
-      setState(() {
-        _currentIndex = index;
-      });
-    }
+    // go_router'ın branch geçiş mekanizması
+    widget.navigationShell.goBranch(
+      index,
+      // Aynı branch'e tıklandığında ilk route'a dön
+      initialLocation: index == _currentIndex,
+    );
   }
 
   @override
   Widget build(BuildContext context) {
-    // Listen for auth session expiration / 401 unauthorized
-    ref.listen<AuthState>(authControllerProvider, (previous, next) {
-      if (next.status == AuthStatus.unauthenticated && mounted) {
-        Navigator.of(context, rootNavigator: true).pushAndRemoveUntil(
-          MaterialPageRoute(builder: (_) => const LoginPage()),
-          (route) => false,
-        );
-      }
-    });
+    // Auth redirect artık GoRouter tarafından otomatik yapılıyor.
+    // Eski ref.listen → Navigator.pushAndRemoveUntil kaldırıldı.
 
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final isDesktop = MediaQuery.of(context).size.width >= 720;
@@ -79,34 +72,10 @@ class _MainNavigationPageState extends ConsumerState<MainNavigationPage>
     final inactiveColor =
         isDark ? const Color(0xFF8E8E93) : const Color(0xFF999999);
 
-    final content = IndexedStack(
-      index: _currentIndex,
-      children: [
-        Navigator(
-          key: _myListsNavKey,
-          onGenerateRoute: (settings) {
-            return MaterialPageRoute(
-              builder: (context) => const WordsListPage(),
-            );
-          },
-        ),
-        const SynonymsPage(),
-        const QuizPage(),
-        const DailyPlanPage(),
-        const ProfilePage(),
-      ],
-    );
-
     return PopScope(
       canPop: false,
       onPopInvokedWithResult: (didPop, result) async {
         if (didPop) return;
-        if (_currentIndex == 0 &&
-            _myListsNavKey.currentState != null &&
-            _myListsNavKey.currentState!.canPop()) {
-          _myListsNavKey.currentState!.pop();
-          return;
-        }
         // Quiz and daily-plan tabs share one controller. Back should leave
         // the active/result quiz and return to that tab's setup screen.
         if (_currentIndex == 2 || _currentIndex == 3) {
@@ -117,9 +86,7 @@ class _MainNavigationPageState extends ConsumerState<MainNavigationPage>
           }
         }
         if (_currentIndex != 0) {
-          setState(() {
-            _currentIndex = 0;
-          });
+          _onItemTapped(0);
           return;
         }
         SystemNavigator.pop();
@@ -129,10 +96,10 @@ class _MainNavigationPageState extends ConsumerState<MainNavigationPage>
             ? Row(
                 children: [
                   _buildDesktopSidebar(isDark, activeColor, inactiveColor),
-                  Expanded(child: content),
+                  Expanded(child: widget.navigationShell),
                 ],
               )
-            : content,
+            : widget.navigationShell,
         bottomNavigationBar: isDesktop
             ? null
             : Container(
@@ -433,3 +400,7 @@ class _MainNavigationPageState extends ConsumerState<MainNavigationPage>
     );
   }
 }
+
+// Geriye dönük uyumluluk — eski import'lar kırılmasın
+@Deprecated('Use MainNavigationShell with go_router instead')
+typedef MainNavigationPage = MainNavigationShell;

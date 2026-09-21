@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import '../../../core/network/dio_error_handler.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/widgets/no_internet_dialog.dart';
@@ -15,7 +16,6 @@ import '../widgets/study/study_progress_slider.dart';
 import '../widgets/study/study_search_bar.dart';
 import '../widgets/study/study_synonyms_bar.dart';
 import '../widgets/study/study_word_card.dart';
-import 'add_edit_word_page.dart';
 
 class StudySessionPage extends ConsumerStatefulWidget {
   final List<WordModel> words;
@@ -194,13 +194,9 @@ class _StudySessionPageState extends ConsumerState<StudySessionPage>
 
   Future<void> _handleAddWord() async {
     final studyNotifier = ref.read(studyControllerProvider.notifier);
-    final result = await Navigator.of(context).push<WordModel>(
-      MaterialPageRoute(
-        builder: (_) => AddEditWordPage(
-          initialListName: widget.listTitle != 'All' ? widget.listTitle : null,
-        ),
-      ),
-    );
+    final result = await context.push<WordModel>('/add-word', extra: {
+      'initialListName': widget.listTitle != 'All' ? widget.listTitle : null,
+    });
 
     if (result != null && mounted) {
       // AddEditWordPage zaten WordListController.addWord() çağırdı
@@ -214,11 +210,9 @@ class _StudySessionPageState extends ConsumerState<StudySessionPage>
     _isNavigating = true;
     try {
       final studyNotifier = ref.read(studyControllerProvider.notifier);
-      final updated = await Navigator.of(context).push<WordModel>(
-        MaterialPageRoute(
-          builder: (_) => AddEditWordPage(wordToEdit: currentWord),
-        ),
-      );
+      final updated = await context.push<WordModel>('/add-word', extra: {
+        'wordToEdit': currentWord,
+      });
 
       if (updated != null && mounted) {
         // AddEditWordPage zaten WordListController.updateWord() çağırdı
@@ -289,7 +283,7 @@ class _StudySessionPageState extends ConsumerState<StudySessionPage>
 
       final studyState = ref.read(studyControllerProvider);
       if (studyState.words.isEmpty) {
-        Navigator.of(context).pop();
+        context.pop();
       }
     }
   }
@@ -328,7 +322,7 @@ class _StudySessionPageState extends ConsumerState<StudySessionPage>
               'Back',
               style: TextStyle(fontSize: 17, fontWeight: FontWeight.w500),
             ),
-            onPressed: () => Navigator.of(context).pop(),
+            onPressed: () => context.pop(),
           ),
           title: Text(
             widget.listTitle ?? 'Study Session',
@@ -368,7 +362,7 @@ class _StudySessionPageState extends ConsumerState<StudySessionPage>
               'Back',
               style: TextStyle(fontSize: 17, fontWeight: FontWeight.w500),
             ),
-            onPressed: () => Navigator.of(context).pop(),
+            onPressed: () => context.pop(),
           ),
           title: Text(
             widget.listTitle ?? 'Study',

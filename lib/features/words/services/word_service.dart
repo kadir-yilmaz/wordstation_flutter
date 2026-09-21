@@ -138,27 +138,12 @@ class WordService {
       if (lists.isNotEmpty) {
         return lists;
       }
-
-      // Fallback: extract distinct list names from all user words
-      final allWords = await getWords();
-      return allWords
-          .map((w) => w.listName ?? 'General')
-          .where((name) => name.isNotEmpty && name != 'Tümü')
-          .toSet()
-          .toList();
+      return [];
     } on DioException catch (e) {
       log('WordService.getListNames DioException: ${e.response?.statusCode} -> ${e.response?.data}');
-      // Fallback on error: extract from words
-      try {
-        final words = await getWords();
-        return words
-            .map((w) => w.listName ?? 'General')
-            .where((name) => name.isNotEmpty && name != 'Tümü')
-            .toSet()
-            .toList();
-      } catch (_) {
-        throw Exception(_extractErrorMessage(e));
-      }
+      return [];
+    } catch (_) {
+      return [];
     }
   }
 

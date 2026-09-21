@@ -7,6 +7,7 @@ import '../services/word_service.dart';
 class WordListState {
   final List<WordModel> words;
   final List<String> listNames;
+  final Map<String, int> wordCountsByList;
   final String? selectedListName;
   final String searchQuery;
   final bool isLoading;
@@ -15,6 +16,7 @@ class WordListState {
   const WordListState({
     required this.words,
     required this.listNames,
+    this.wordCountsByList = const {},
     this.selectedListName,
     this.searchQuery = '',
     this.isLoading = false,
@@ -24,6 +26,7 @@ class WordListState {
   factory WordListState.initial() => const WordListState(
         words: [],
         listNames: [],
+        wordCountsByList: {},
         selectedListName: null,
         searchQuery: '',
         isLoading: false,
@@ -32,6 +35,7 @@ class WordListState {
   WordListState copyWith({
     List<WordModel>? words,
     List<String>? listNames,
+    Map<String, int>? wordCountsByList,
     String? selectedListName,
     String? searchQuery,
     bool? isLoading,
@@ -40,6 +44,7 @@ class WordListState {
     return WordListState(
       words: words ?? this.words,
       listNames: listNames ?? this.listNames,
+      wordCountsByList: wordCountsByList ?? this.wordCountsByList,
       selectedListName: selectedListName ?? this.selectedListName,
       searchQuery: searchQuery ?? this.searchQuery,
       isLoading: isLoading ?? this.isLoading,
@@ -65,6 +70,7 @@ final wordListControllerProvider =
 class WordListController extends StateNotifier<WordListState> {
   final WordService _wordService;
   Timer? _debounceTimer;
+  bool _isFetching = false;
 
   WordListController(this._wordService) : super(WordListState.initial()) {
     loadInitialData();
@@ -76,36 +82,46 @@ class WordListController extends StateNotifier<WordListState> {
     super.dispose();
   }
 
-  Future<void> loadInitialData() async {
+  static (List<String>, Map<String, int>) _processListsAndCounts(
+      List<WordModel> words) {
+    final Map<String, int> counts = {};
+    for (final w in words) {
+      final name = (w.listName == null || w.listName!.trim().isEmpty)
+          ? 'General'
+          : w.listName!.trim();
+      if (name == 'Tümü' || name == 'All') continue;
+      counts[name] = (counts[name] ?? 0) + 1;
+    }
+    final lists = counts.keys.toList()..sort();
+    return (lists, counts);
+  }
+
+  Future<void> loadInitialData({bool forceRefresh = false}) async {
     if (!mounted) return;
-    state = state.copyWith(isLoading: true, errorMessage: null);
+    // Eşzamanlı mükerrer istekleri kilit mekanizmasıyla engelle
+    if (_isFetching) return;
+    // Eğer veri zaten mevcutsa ve forceRefresh değilse gereksiz yükleme yapma
+    if (state.words.isNotEmpty && !forceRefresh) return;
+
+    _isFetching = true;
+    if (state.words.isEmpty) {
+      state = state.copyWith(isLoading: true, errorMessage: null);
+    }
+
     try {
-      // Paralel API çağrıları — seri yerine 2x hızlı
-      final results = await Future.wait([
-        _wordService.getListNames(),
-        _wordService.getWords(),
-      ]);
-      final fetchedLists = results[0] as List<String>;
-      final words = results[1] as List<WordModel>;
-
-      final derivedLists = words
-          .map((w) => w.listName ?? 'General')
-          .where((l) => l.isNotEmpty && l != 'Tümü' && l != 'All')
-          .toSet()
-          .toList();
-
-      final combinedLists = <String>{
-        ...fetchedLists.where((l) => l.isNotEmpty && l != 'Tümü' && l != 'All'),
-        ...derivedLists,
-      }.toList();
+      // Yalnızca TEK bir optimize getWords çağrısı!
+      final words = await _wordService.getWords();
+      final (listNames, counts) = _processListsAndCounts(words);
 
       if (!mounted) return;
       state = state.copyWith(
         words: words,
-        listNames: combinedLists,
+        listNames: listNames,
+        wordCountsByList: counts,
         selectedListName: state.selectedListName ??
-            (combinedLists.isNotEmpty ? combinedLists.first : null),
+            (listNames.isNotEmpty ? listNames.first : null),
         isLoading: false,
+        errorMessage: null,
       );
     } catch (e) {
       if (!mounted) return;
@@ -113,6 +129,8 @@ class WordListController extends StateNotifier<WordListState> {
         isLoading: false,
         errorMessage: e.toString().replaceAll('Exception: ', ''),
       );
+    } finally {
+      _isFetching = false;
     }
   }
 
@@ -254,11 +272,12 @@ class WordListController extends StateNotifier<WordListState> {
       if (!mounted) return true;
       // Optimistik: Kelimeyi local state'e ekle, full reload yapma
       final updatedWords = [...state.words, saved];
-      final listName = saved.listName ?? 'General';
-      final updatedListNames = state.listNames.contains(listName)
-          ? state.listNames
-          : [...state.listNames, listName];
-      state = state.copyWith(words: updatedWords, listNames: updatedListNames);
+      final (listNames, counts) = _processListsAndCounts(updatedWords);
+      state = state.copyWith(
+        words: updatedWords,
+        listNames: listNames,
+        wordCountsByList: counts,
+      );
       return true;
     } catch (e) {
       if (!mounted) return false;
@@ -278,7 +297,12 @@ class WordListController extends StateNotifier<WordListState> {
         if (w.id == saved.id) return saved;
         return w;
       }).toList();
-      state = state.copyWith(words: updatedWords);
+      final (listNames, counts) = _processListsAndCounts(updatedWords);
+      state = state.copyWith(
+        words: updatedWords,
+        listNames: listNames,
+        wordCountsByList: counts,
+      );
       return true;
     } catch (e) {
       if (!mounted) return false;
@@ -295,7 +319,12 @@ class WordListController extends StateNotifier<WordListState> {
       if (!mounted) return true;
       // Optimistik: Kelimeyi local state'den çıkar, full reload yapma
       final updatedWords = state.words.where((w) => w.id != id).toList();
-      state = state.copyWith(words: updatedWords);
+      final (listNames, counts) = _processListsAndCounts(updatedWords);
+      state = state.copyWith(
+        words: updatedWords,
+        listNames: listNames,
+        wordCountsByList: counts,
+      );
       return true;
     } catch (e) {
       if (!mounted) return false;
@@ -307,6 +336,6 @@ class WordListController extends StateNotifier<WordListState> {
   }
 
   Future<void> refresh() async {
-    await loadInitialData();
+    await loadInitialData(forceRefresh: true);
   }
 }

@@ -2,12 +2,16 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_web_plugins/url_strategy.dart';
+import 'core/router/app_router.dart';
 import 'core/theme/app_theme.dart';
 import 'core/theme/theme_controller.dart';
-import 'features/auth/pages/splash_page.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Web'de temiz URL'ler için (# işaretini kaldırır)
+  usePathUrlStrategy();
 
   // Set preferred orientations
   await SystemChrome.setPreferredOrientations([
@@ -40,8 +44,9 @@ class WordStationApp extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final themeMode = ref.watch(themeControllerProvider);
+    final router = ref.watch(routerProvider);
 
-    return MaterialApp(
+    return MaterialApp.router(
       title: 'Word Station',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.lightTheme,
@@ -50,8 +55,7 @@ class WordStationApp extends ConsumerWidget {
       scrollBehavior: const AppScrollBehavior(),
       themeAnimationDuration: const Duration(milliseconds: 300),
       themeAnimationCurve: Curves.easeInOutCubic,
-      home: const AuthGate(),
+      routerConfig: router,
     );
   }
 }
-

@@ -1,12 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/theme_controller.dart';
 import '../../../core/widgets/responsive_layout.dart';
 import '../../auth/controllers/auth_controller.dart';
-import '../../auth/pages/login_page.dart';
 import '../controllers/profile_controller.dart';
-import 'token_inspector_page.dart';
 
 class ProfilePage extends ConsumerWidget {
   const ProfilePage({super.key});
@@ -33,12 +32,7 @@ class ProfilePage extends ConsumerWidget {
 
     if (confirm == true && context.mounted) {
       await ref.read(authControllerProvider.notifier).logout();
-      if (context.mounted) {
-        Navigator.of(context).pushAndRemoveUntil(
-          MaterialPageRoute(builder: (_) => const LoginPage()),
-          (route) => false,
-        );
-      }
+      // Auth state değişince GoRouter.redirect otomatik /login'e yönlendirir
     }
   }
 
@@ -377,13 +371,7 @@ class ProfilePage extends ConsumerWidget {
                   color: Colors.transparent,
                   child: InkWell(
                     borderRadius: BorderRadius.circular(16),
-                    onTap: () {
-                      Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (_) => const TokenInspectorPage(),
-                        ),
-                      );
-                    },
+                    onTap: () => context.push('/token-inspector'),
                     child: Padding(
                       padding: const EdgeInsets.symmetric(
                           horizontal: 18, vertical: 14),

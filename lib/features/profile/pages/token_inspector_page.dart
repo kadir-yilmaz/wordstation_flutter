@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/utils/jwt_decoder.dart';
@@ -302,7 +303,7 @@ class _TokenInspectorPageState extends ConsumerState<TokenInspectorPage> {
             'Back',
             style: TextStyle(fontSize: 17, fontWeight: FontWeight.w500),
           ),
-          onPressed: () => Navigator.of(context).pop(),
+          onPressed: () => context.pop(),
         ),
         title: const Text(
           'Token & Auth Inspector',

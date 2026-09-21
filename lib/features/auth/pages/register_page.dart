@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/widgets/custom_button.dart';
 import '../../../core/widgets/custom_text_field.dart';
 import '../../../core/widgets/loading_overlay.dart';
-import '../../navigation/main_navigation_page.dart';
 import '../controllers/auth_controller.dart';
 
 class RegisterPage extends ConsumerStatefulWidget {
@@ -38,10 +38,7 @@ class _RegisterPageState extends ConsumerState<RegisterPage> {
         );
 
     if (success && mounted) {
-      Navigator.of(context).pushAndRemoveUntil(
-        MaterialPageRoute(builder: (_) => const MainNavigationPage()),
-        (route) => false,
-      );
+      // Auth state değişince GoRouter.redirect otomatik yönlendirir
     }
   }
 
@@ -81,7 +78,7 @@ class _RegisterPageState extends ConsumerState<RegisterPage> {
       appBar: AppBar(
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 20),
-          onPressed: () => Navigator.of(context).pop(),
+          onPressed: () => context.pop(),
         ),
       ),
       body: LoadingOverlay(
@@ -229,7 +226,7 @@ class _RegisterPageState extends ConsumerState<RegisterPage> {
                           ),
                           const SizedBox(width: 6),
                           GestureDetector(
-                            onTap: () => Navigator.of(context).pop(),
+                            onTap: () => context.pop(),
                             child: const Text(
                               'Giriş Yap',
                               style: TextStyle(

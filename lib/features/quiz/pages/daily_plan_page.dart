@@ -2,6 +2,7 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import '../../../core/network/dio_error_handler.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/widgets/custom_button.dart';
@@ -10,7 +11,6 @@ import '../../../core/widgets/no_internet_dialog.dart';
 import '../../../core/widgets/responsive_layout.dart';
 import '../../words/controllers/word_list_controller.dart';
 import '../../words/models/word_model.dart';
-import '../../words/pages/study_session_page.dart';
 import '../controllers/quiz_controller.dart';
 import '../models/daily_quiz_plan_model.dart';
 import '../pages/quiz_history_page.dart';
@@ -994,18 +994,14 @@ class _DailyPlanPageState extends ConsumerState<DailyPlanPage> {
                   onTap: () {
                     HapticFeedback.selectionClick();
                     if (studyWords.isNotEmpty) {
-                      Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (_) => StudySessionPage(
-                            words: studyWords,
-                            listTitle: isCompleted
-                                ? 'Günün Kelimeleri (Tekrar)'
-                                : 'Günün Kelimeleri - Gün ${plan.currentDay}',
-                            showSearchBar: false,
-                            isReadOnly: true,
-                          ),
-                        ),
-                      );
+                      context.push('/study', extra: {
+                        'words': studyWords,
+                        'listTitle': isCompleted
+                            ? 'Günün Kelimeleri (Tekrar)'
+                            : 'Günün Kelimeleri - Gün ${plan.currentDay}',
+                        'showSearchBar': false,
+                        'isReadOnly': true,
+                      });
                     }
                   },
                   child: Container(

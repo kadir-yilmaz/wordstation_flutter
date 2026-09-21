@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import '../../../core/network/dio_error_handler.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/widgets/custom_button.dart';
@@ -8,7 +9,6 @@ import '../../../core/widgets/network_error_view.dart';
 import '../../../core/widgets/no_internet_dialog.dart';
 import '../../../core/widgets/responsive_layout.dart';
 import '../controllers/word_list_controller.dart';
-import 'study_session_page.dart';
 
 class WordsListPage extends ConsumerStatefulWidget {
   const WordsListPage({super.key});
@@ -37,7 +37,9 @@ class _WordsListPageState extends ConsumerState<WordsListPage> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      ref.read(wordListControllerProvider.notifier).loadInitialData();
+      if (ref.read(wordListControllerProvider).words.isEmpty) {
+        ref.read(wordListControllerProvider.notifier).loadInitialData();
+      }
     });
   }
 
@@ -271,16 +273,10 @@ class _WordsListPageState extends ConsumerState<WordsListPage> {
         .where((w) => w.listName == listName)
         .toList();
 
-    Navigator.of(context)
-        .push(
-          MaterialPageRoute(
-            builder: (_) => StudySessionPage(
-              words: listWords,
-              listTitle: listName,
-            ),
-          ),
-        )
-        .then((_) {
+    context.push('/study', extra: {
+      'words': listWords,
+      'listTitle': listName,
+    }).then((_) {
       if (mounted) {
         ref.read(wordListControllerProvider.notifier).refresh();
         setState(() {
@@ -411,9 +407,9 @@ class _WordsListPageState extends ConsumerState<WordsListPage> {
                                     final gradient = _listGradients[
                                         index % _listGradients.length];
 
-                                    final wordCount = wordListState.words
-                                        .where((w) => w.listName == listName)
-                                        .length;
+                                    final wordCount = wordListState
+                                            .wordCountsByList[listName] ??
+                                        0;
 
                                     return _buildListCard(
                                       listName: listName,
@@ -440,10 +436,9 @@ class _WordsListPageState extends ConsumerState<WordsListPage> {
                                     final gradient = _listGradients[
                                         index % _listGradients.length];
 
-                                    // Count words in this list
-                                    final wordCount = wordListState.words
-                                        .where((w) => w.listName == listName)
-                                        .length;
+                                    final wordCount = wordListState
+                                            .wordCountsByList[listName] ??
+                                        0;
 
                                     return Padding(
                                       padding:
