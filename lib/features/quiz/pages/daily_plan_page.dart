@@ -153,7 +153,7 @@ class _DailyPlanPageState extends ConsumerState<DailyPlanPage> {
                           children: [
                             Text(
                               _showHistory
-                                  ? 'Geçmiş Quizler'
+                                  ? 'Geçmiş Günler'
                                   : (_isCreatingNewPlan
                                       ? 'Yeni Plan Oluştur'
                                       : 'Günlük Quiz Planı'),

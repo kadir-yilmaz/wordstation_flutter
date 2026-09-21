@@ -265,11 +265,13 @@ class QuizController extends StateNotifier<QuizState> {
 
         if (newPlan != null) {
           await _storageService?.saveCachedDailyPlan(newPlan);
+          await _historyApiService?.clearHistory(isDailyQuiz: true);
           state = state.copyWith(
             dailyPlan: newPlan,
             isDailyQuizCompletedToday: false,
             hasPlanLoadError: false,
             errorMessage: null,
+            historyList: state.historyList.where((h) => !h.isDailyQuiz).toList(),
           );
           return true;
         }
@@ -303,6 +305,7 @@ class QuizController extends StateNotifier<QuizState> {
       isDailyQuizCompletedToday: false,
       hasPlanLoadError: false,
       errorMessage: null,
+      historyList: state.historyList.where((h) => !h.isDailyQuiz).toList(),
     );
     return true;
   }
@@ -322,12 +325,14 @@ class QuizController extends StateNotifier<QuizState> {
       }
     }
 
+    await _historyApiService?.clearHistory(isDailyQuiz: true);
     await _storageService?.clearCachedDailyPlan();
 
     state = state.copyWith(
       clearDailyPlan: true,
       isDailyQuizCompletedToday: false,
       hasPlanLoadError: false,
+      historyList: state.historyList.where((h) => !h.isDailyQuiz).toList(),
     );
     return true;
   }

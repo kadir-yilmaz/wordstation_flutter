@@ -14,6 +14,7 @@ import 'package:wordstation_flutter/features/quiz/models/daily_quiz_plan_model.d
 import 'package:wordstation_flutter/features/quiz/models/quiz_history_model.dart';
 import 'package:wordstation_flutter/features/quiz/pages/daily_plan_page.dart';
 import 'package:wordstation_flutter/features/quiz/pages/quiz_history_page.dart';
+import 'package:wordstation_flutter/features/quiz/widgets/quiz_history_view.dart';
 import 'package:wordstation_flutter/features/quiz/pages/quiz_page.dart';
 import 'package:dio/dio.dart';
 import 'package:wordstation_flutter/core/network/api_client.dart';
@@ -567,6 +568,88 @@ void main() {
     expect(find.text('HEDEF KELİME LİSTESİ'), findsOneWidget);
   });
 
+  testWidgets('QuizHistoryView renders 3-column daily grid with progress header', (WidgetTester tester) async {
+    final samplePlan = DailyQuizPlanModel(
+      id: 'plan-yds',
+      listName: 'YDS',
+      dailyCount: 10,
+      shuffledWordIds: List.generate(2340, (i) => i + 1),
+      createdAt: DateTime(2026, 1, 1),
+    );
+
+    final mockHistories = [
+      QuizHistoryModel(
+        id: 'h1',
+        date: DateTime(2026, 9, 1),
+        title: 'Günün Quizi (Gün 1/234)',
+        score: 70,
+        maxScore: 100,
+        totalQuestions: 20,
+        correctCount: 7,
+        wrongCount: 13,
+        isDailyQuiz: true,
+        results: const [],
+      ),
+      QuizHistoryModel(
+        id: 'h2',
+        date: DateTime(2026, 9, 2),
+        title: 'Günün Quizi (Gün 2/234)',
+        score: 90,
+        maxScore: 100,
+        totalQuestions: 20,
+        correctCount: 18,
+        wrongCount: 2,
+        isDailyQuiz: true,
+        results: const [],
+      ),
+      QuizHistoryModel(
+        id: 'h3',
+        date: DateTime(2026, 9, 3),
+        title: 'Günün Quizi (Gün 3/234)',
+        score: 100,
+        maxScore: 100,
+        totalQuestions: 20,
+        correctCount: 20,
+        wrongCount: 0,
+        isDailyQuiz: true,
+        results: const [],
+      ),
+    ];
+
+    final mockController = QuizController(
+      const [],
+      soundService: SoundService(enableAudio: false),
+    );
+    mockController.state = mockController.state.copyWith(
+      isPlanLoaded: true,
+      dailyPlan: samplePlan,
+      historyList: mockHistories,
+    );
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          quizControllerProvider.overrideWith((ref) => mockController),
+        ],
+        child: const MaterialApp(
+          home: Scaffold(
+            body: QuizHistoryView(isDailyQuiz: true),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('3/234 Gün Tamamlandı'), findsOneWidget);
+    expect(find.text('1. Gün'), findsOneWidget);
+    expect(find.text('7/20'), findsOneWidget);
+    expect(find.text('2. Gün'), findsOneWidget);
+    expect(find.text('18/20'), findsOneWidget);
+    expect(find.text('3. Gün'), findsOneWidget);
+    expect(find.text('20/20'), findsOneWidget);
+    expect(find.byType(GridView), findsOneWidget);
+  });
+
   testWidgets('Study session routes render tabbar in MainNavigationShell', (WidgetTester tester) async {
     const testWord = WordModel(id: 1, en: 'solitude', tr: 'yalnızlık', listName: 'B2');
 
@@ -796,7 +879,7 @@ void main() {
     await tester.tap(find.text('0 Günlük Seri'));
     await tester.pumpAndSettle();
 
-    expect(find.text('Geçmiş Quizler'), findsOneWidget);
+    expect(find.text('Geçmiş Günler'), findsOneWidget);
 
     // Tap back button in header
     await tester.tap(find.byIcon(Icons.arrow_back_ios_new_rounded));

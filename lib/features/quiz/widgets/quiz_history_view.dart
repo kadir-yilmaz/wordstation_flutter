@@ -23,6 +23,15 @@ class QuizHistoryView extends ConsumerWidget {
     return date.year == now.year && date.month == now.month && date.day == now.day;
   }
 
+  String _getMonthAbbr(int month) {
+    const months = [
+      'Oca', 'Şub', 'Mar', 'Nis', 'May', 'Haz',
+      'Tem', 'Ağu', 'Eyl', 'Eki', 'Kas', 'Ara'
+    ];
+    if (month >= 1 && month <= 12) return months[month - 1];
+    return '';
+  }
+
   Future<void> _confirmClearHistory(
     BuildContext context,
     QuizController quizNotifier,
@@ -31,8 +40,10 @@ class QuizHistoryView extends ConsumerWidget {
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Test Geçmişini Temizle'),
-        content: const Text(
-          'Tüm test geçmişiniz ve detaylı soru sonuçlarınız silinecektir. Bu işlem geri alınamaz. Emin misiniz?',
+        content: Text(
+          isDailyQuiz
+              ? 'Tüm günlük plan test geçmişiniz silinecektir. Bu işlem geri alınamaz. Emin misiniz?'
+              : 'Tüm test geçmişiniz ve detaylı soru sonuçlarınız silinecektir. Bu işlem geri alınamaz. Emin misiniz?',
         ),
         actions: [
           TextButton(
@@ -68,41 +79,123 @@ class QuizHistoryView extends ConsumerWidget {
       onRefresh: () async {
         await quizNotifier.loadInitialData();
       },
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          // Subheader with Count & Clear Action
-          if (historyList.isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(4, 0, 4, 10),
-              child: Row(
+      child: isDailyQuiz
+          ? _buildDailyPlanHistory(
+              context: context,
+              quizState: quizState,
+              quizNotifier: quizNotifier,
+              wordListState: wordListState,
+              historyList: historyList,
+              isDark: isDark,
+            )
+          : _buildGeneralQuizHistory(
+              context: context,
+              quizNotifier: quizNotifier,
+              wordListState: wordListState,
+              historyList: historyList,
+              isDark: isDark,
+            ),
+    );
+  }
+
+  // ==========================================
+  // GÜNLÜK PLAN GEÇMİŞİ (3'LÜ KARE GRID)
+  // ==========================================
+  Widget _buildDailyPlanHistory({
+    required BuildContext context,
+    required QuizState quizState,
+    required QuizController quizNotifier,
+    required WordListState wordListState,
+    required List<QuizHistoryModel> historyList,
+    required bool isDark,
+  }) {
+    // Kronolojik sıra (1. Gün, 2. Gün...)
+    final sortedList = historyList.toList()
+      ..sort((a, b) => a.date.compareTo(b.date));
+
+    final plan = quizState.dailyPlan;
+    final totalDays = plan != null && plan.totalDays > 0
+        ? plan.totalDays
+        : (sortedList.isNotEmpty ? sortedList.length : 1);
+    final completedDays = sortedList.length;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        // 1. Üst İlerleme Özeti Kartı: "3/234 Gün Tamamlandı"
+        Container(
+          margin: const EdgeInsets.fromLTRB(0, 4, 0, 14),
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: isDark
+                  ? [AppColors.darkSurface, const Color(0xFF1E293B)]
+                  : [Colors.white, const Color(0xFFF8FAFC)],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(
+              color: isDark ? AppColors.darkBorder : AppColors.lightBorder,
+              width: 1.2,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.04),
+                blurRadius: 10,
+                offset: const Offset(0, 3),
+              ),
+            ],
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text(
-                    '${historyList.length} ${isDailyQuiz ? "Günlük Test Kaydı" : "Test Sonucu"}',
-                    style: TextStyle(
-                      fontSize: 12.5,
-                      fontWeight: FontWeight.w600,
-                      color: isDark
-                          ? AppColors.darkTextSecondary
-                          : AppColors.lightTextSecondary,
-                    ),
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: AppColors.turquoise.withValues(alpha: 0.15),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: const Icon(
+                          Icons.check_circle_outline_rounded,
+                          color: AppColors.turquoise,
+                          size: 20,
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Text(
+                        '$completedDays/$totalDays Gün Tamamlandı',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: -0.3,
+                          color: isDark
+                              ? AppColors.darkTextPrimary
+                              : AppColors.lightTextPrimary,
+                        ),
+                      ),
+                    ],
                   ),
-                  if (!isDailyQuiz)
+                  if (sortedList.isNotEmpty)
                     InkWell(
                       onTap: () => _confirmClearHistory(context, quizNotifier),
                       borderRadius: BorderRadius.circular(8),
                       child: const Padding(
-                        padding: EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        padding: EdgeInsets.symmetric(horizontal: 6, vertical: 4),
                         child: Row(
                           children: [
                             Icon(Icons.delete_sweep_outlined,
-                                size: 16, color: AppColors.error),
+                                size: 15, color: AppColors.error),
                             SizedBox(width: 4),
                             Text(
                               'Temizle',
                               style: TextStyle(
-                                fontSize: 12.5,
+                                fontSize: 12,
                                 color: AppColors.error,
                                 fontWeight: FontWeight.w600,
                               ),
@@ -113,96 +206,315 @@ class QuizHistoryView extends ConsumerWidget {
                     ),
                 ],
               ),
-            ),
+              const SizedBox(height: 12),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(6),
+                child: LinearProgressIndicator(
+                  value: totalDays > 0 ? (completedDays / totalDays).clamp(0.0, 1.0) : 0,
+                  minHeight: 6,
+                  backgroundColor: isDark
+                      ? AppColors.darkBorder
+                      : AppColors.lightBorder.withValues(alpha: 0.5),
+                  valueColor: const AlwaysStoppedAnimation<Color>(AppColors.turquoise),
+                ),
+              ),
+            ],
+          ),
+        ),
 
-          // Main List or Empty State
-          Expanded(
-            child: historyList.isEmpty
-                ? LayoutBuilder(
-                    builder: (context, constraints) => SingleChildScrollView(
-                      physics: const AlwaysScrollableScrollPhysics(
-                        parent: BouncingScrollPhysics(),
+        // 2. Bir Satırda 3 Kare Grid
+        Expanded(
+          child: sortedList.isEmpty
+              ? _buildEmptyState(isDark)
+              : GridView.builder(
+                  physics: const AlwaysScrollableScrollPhysics(
+                    parent: BouncingScrollPhysics(),
+                  ),
+                  padding: const EdgeInsets.only(bottom: 20),
+                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: 3,
+                    crossAxisSpacing: 10,
+                    mainAxisSpacing: 10,
+                    childAspectRatio: 0.95,
+                  ),
+                  itemCount: sortedList.length,
+                  itemBuilder: (context, index) {
+                    final entry = sortedList[index];
+                    return _buildDailyGridCard(
+                      context: context,
+                      entry: entry,
+                      index: index,
+                      isDark: isDark,
+                      allWords: wordListState.words,
+                    );
+                  },
+                ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildDailyGridCard({
+    required BuildContext context,
+    required QuizHistoryModel entry,
+    required int index,
+    required bool isDark,
+    required List<WordModel> allWords,
+  }) {
+    final match = RegExp(r'Gün\s*(\d+)').firstMatch(entry.title);
+    final dayNum = match != null ? match.group(1) : '${index + 1}';
+    final dayTitle = '$dayNum. Gün';
+    final isSuccess = entry.percentage >= 70;
+    final isToday = _isToday(entry.date);
+
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      child: GestureDetector(
+        onTap: () {
+          HapticFeedback.selectionClick();
+          showQuizHistoryDetailModal(context, entry, isDark, allWords);
+        },
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+          decoration: BoxDecoration(
+            color: isDark ? AppColors.darkSurface : Colors.white,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: isToday
+                  ? AppColors.turquoise
+                  : (isDark ? AppColors.darkBorder : AppColors.lightBorder),
+              width: isToday ? 1.8 : 1,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.04),
+                blurRadius: 8,
+                offset: const Offset(0, 2),
+              ),
+            ],
+          ),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              // 1. Gün Başlığı ve Mini Yüzde Rozeti
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    dayTitle,
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: -0.2,
+                      color: isDark
+                          ? AppColors.darkTextPrimary
+                          : AppColors.lightTextPrimary,
+                    ),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+                    decoration: BoxDecoration(
+                      color: (isSuccess ? AppColors.success : AppColors.orange)
+                          .withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Text(
+                      '%${entry.percentage}',
+                      style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w800,
+                        color: isSuccess ? AppColors.success : AppColors.orange,
                       ),
-                      child: ConstrainedBox(
-                        constraints:
-                            BoxConstraints(minHeight: constraints.maxHeight),
-                        child: Center(
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 32, vertical: 40),
-                            child: Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Container(
-                                  width: 72,
-                                  height: 72,
-                                  decoration: BoxDecoration(
-                                    shape: BoxShape.circle,
-                                    color: isDark
-                                        ? AppColors.darkSurface
-                                        : const Color(0xFFF2F2F7),
-                                  ),
-                                  child: Icon(
-                                    Icons.history_toggle_off_rounded,
-                                    size: 38,
-                                    color: isDark
-                                        ? AppColors.darkTextMuted
-                                        : AppColors.lightTextMuted,
-                                  ),
-                                ),
-                                const SizedBox(height: 16),
-                                Text(
-                                  isDailyQuiz
-                                      ? 'Henüz Günlük Test Çözülmedi'
-                                      : 'Henüz Çözülmüş Test Yok',
-                                  style: TextStyle(
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.w700,
-                                    color: isDark
-                                        ? AppColors.darkTextPrimary
-                                        : AppColors.lightTextPrimary,
-                                  ),
-                                ),
-                                const SizedBox(height: 6),
-                                Text(
-                                  isDailyQuiz
-                                      ? 'Günlük quiz planınızı çözdükçe tüm günlük sonuçlarınız ve başarı grafikleriniz burada listelenecektir.'
-                                      : 'Kelime testlerini tamamladıkça tüm sonuçlarınız ve analizleriniz burada listelenecektir.',
-                                  textAlign: TextAlign.center,
-                                  style: TextStyle(
-                                    fontSize: 13,
-                                    color: isDark
-                                        ? AppColors.darkTextSecondary
-                                        : AppColors.lightTextSecondary,
-                                    height: 1.4,
-                                  ),
-                                ),
-                              ],
-                            ),
+                    ),
+                  ),
+                ],
+              ),
+
+              // 2. Skor Alanı: "7/20 Doğru"
+              Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    '${entry.correctCount}/${entry.totalQuestions}',
+                    style: const TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w900,
+                      color: AppColors.turquoise,
+                      letterSpacing: -0.3,
+                    ),
+                  ),
+                  Text(
+                    'Doğru',
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      color: isDark
+                          ? AppColors.darkTextSecondary
+                          : AppColors.lightTextSecondary,
+                    ),
+                  ),
+                ],
+              ),
+
+              // 3. Tarih
+              Text(
+                '${entry.date.day} ${_getMonthAbbr(entry.date.month)}',
+                style: TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w500,
+                  color: isDark
+                      ? AppColors.darkTextMuted
+                      : AppColors.lightTextMuted,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ==========================================
+  // GENEL TEST GEÇMİŞİ (LİSTE ŞEKLİNDE)
+  // ==========================================
+  Widget _buildGeneralQuizHistory({
+    required BuildContext context,
+    required QuizController quizNotifier,
+    required WordListState wordListState,
+    required List<QuizHistoryModel> historyList,
+    required bool isDark,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (historyList.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(4, 0, 4, 10),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  '${historyList.length} Test Sonucu',
+                  style: TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w600,
+                    color: isDark
+                        ? AppColors.darkTextSecondary
+                        : AppColors.lightTextSecondary,
+                  ),
+                ),
+                InkWell(
+                  onTap: () => _confirmClearHistory(context, quizNotifier),
+                  borderRadius: BorderRadius.circular(8),
+                  child: const Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    child: Row(
+                      children: [
+                        Icon(Icons.delete_sweep_outlined,
+                            size: 16, color: AppColors.error),
+                        SizedBox(width: 4),
+                        Text(
+                          'Temizle',
+                          style: TextStyle(
+                            fontSize: 12.5,
+                            color: AppColors.error,
+                            fontWeight: FontWeight.w600,
                           ),
                         ),
-                      ),
+                      ],
                     ),
-                  )
-                : ListView.separated(
-                    physics: const AlwaysScrollableScrollPhysics(
-                      parent: BouncingScrollPhysics(),
-                    ),
-                    padding: const EdgeInsets.only(bottom: 24),
-                    itemCount: historyList.length,
-                    separatorBuilder: (_, _) => const SizedBox(height: 12),
-                    itemBuilder: (context, idx) {
-                      final entry = historyList[idx];
-                      return _buildCompactHistoryRow(
-                        context: context,
-                        entry: entry,
-                        isDark: isDark,
-                        allWords: wordListState.words,
-                      );
-                    },
                   ),
+                ),
+              ],
+            ),
           ),
-        ],
+        Expanded(
+          child: historyList.isEmpty
+              ? _buildEmptyState(isDark)
+              : ListView.separated(
+                  physics: const AlwaysScrollableScrollPhysics(
+                    parent: BouncingScrollPhysics(),
+                  ),
+                  itemCount: historyList.length,
+                  separatorBuilder: (context, index) => const SizedBox(height: 10),
+                  itemBuilder: (context, index) {
+                    final entry = historyList[index];
+                    return _buildCompactHistoryRow(
+                      context: context,
+                      entry: entry,
+                      isDark: isDark,
+                      allWords: wordListState.words,
+                    );
+                  },
+                ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildEmptyState(bool isDark) {
+    return LayoutBuilder(
+      builder: (context, constraints) => SingleChildScrollView(
+        physics: const AlwaysScrollableScrollPhysics(
+          parent: BouncingScrollPhysics(),
+        ),
+        child: ConstrainedBox(
+          constraints: BoxConstraints(minHeight: constraints.maxHeight),
+          child: Center(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 40),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Container(
+                    width: 72,
+                    height: 72,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: isDark
+                          ? AppColors.darkSurface
+                          : const Color(0xFFF2F2F7),
+                    ),
+                    child: Icon(
+                      Icons.history_toggle_off_rounded,
+                      size: 38,
+                      color: isDark
+                          ? AppColors.darkTextMuted
+                          : AppColors.lightTextMuted,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    isDailyQuiz
+                        ? 'Henüz Günlük Test Çözülmedi'
+                        : 'Henüz Çözülmüş Test Yok',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                      color: isDark
+                          ? AppColors.darkTextPrimary
+                          : AppColors.lightTextPrimary,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    isDailyQuiz
+                        ? 'Günlük quiz planınızı çözdükçe tüm günlük sonuçlarınız ve skorlarınız burada listelenecektir.'
+                        : 'Kelime testlerini tamamladıkça tüm sonuçlarınız ve analizleriniz burada listelenecektir.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: isDark
+                          ? AppColors.darkTextSecondary
+                          : AppColors.lightTextSecondary,
+                      height: 1.4,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -216,7 +528,6 @@ class QuizHistoryView extends ConsumerWidget {
     final dateStr =
         '${entry.date.day.toString().padLeft(2, '0')}.${entry.date.month.toString().padLeft(2, '0')}.${entry.date.year} • ${entry.date.hour.toString().padLeft(2, '0')}:${entry.date.minute.toString().padLeft(2, '0')}';
     final isSuccess = entry.percentage >= 70;
-    final isToday = _isToday(entry.date);
 
     return MouseRegion(
       cursor: SystemMouseCursors.click,
@@ -231,10 +542,8 @@ class QuizHistoryView extends ConsumerWidget {
             color: isDark ? AppColors.darkSurface : Colors.white,
             borderRadius: BorderRadius.circular(16),
             border: Border.all(
-              color: isToday && isDailyQuiz
-                  ? AppColors.turquoise
-                  : (isDark ? AppColors.darkBorder : AppColors.lightBorder),
-              width: isToday && isDailyQuiz ? 1.5 : 1,
+              color: isDark ? AppColors.darkBorder : AppColors.lightBorder,
+              width: 1,
             ),
             boxShadow: [
               BoxShadow(
@@ -246,7 +555,6 @@ class QuizHistoryView extends ConsumerWidget {
           ),
           child: Row(
             children: [
-              // 1. Modern Percentage Badge
               Container(
                 width: 48,
                 height: 48,
@@ -267,50 +575,22 @@ class QuizHistoryView extends ConsumerWidget {
                 ),
               ),
               const SizedBox(width: 16),
-
-              // 2. Title & Date Information
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Row(
-                      children: [
-                        if (isToday && isDailyQuiz) ...[
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 6, vertical: 2),
-                            decoration: BoxDecoration(
-                              color: AppColors.turquoise,
-                              borderRadius: BorderRadius.circular(6),
-                            ),
-                            child: const Text(
-                              'BUGÜN',
-                              style: TextStyle(
-                                fontSize: 9.5,
-                                fontWeight: FontWeight.w800,
-                                color: Colors.white,
-                                letterSpacing: 0.4,
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                        ],
-                        Flexible(
-                          child: Text(
-                            entry.title,
-                            style: TextStyle(
-                              fontSize: 15,
-                              fontWeight: FontWeight.w700,
-                              color: isDark
-                                  ? AppColors.darkTextPrimary
-                                  : AppColors.lightTextPrimary,
-                            ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                      ],
+                    Text(
+                      entry.title,
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700,
+                        color: isDark
+                            ? AppColors.darkTextPrimary
+                            : AppColors.lightTextPrimary,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                     ),
                     const SizedBox(height: 4),
                     Text(
@@ -326,10 +606,7 @@ class QuizHistoryView extends ConsumerWidget {
                   ],
                 ),
               ),
-
               const SizedBox(width: 12),
-
-              // 3. Score & Chevron Icon (No Study Button)
               Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
