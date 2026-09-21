@@ -559,8 +559,25 @@ class QuizController extends StateNotifier<QuizState> {
         streakDays: newStreak,
       );
 
-      // 3. Güncel geçmiş günleri doğrudan DB'den çek
-      List<DailyPlanDayModel> updatedDays = state.dailyPlanDays;
+      // 3. Güncel geçmiş günleri hazırla ve DB'den çek
+      final currentDayModel = DailyPlanDayModel(
+        id: DateTime.now().millisecondsSinceEpoch,
+        dailyQuizPlanId: int.tryParse(plan.id) ?? 0,
+        dayNumber: dayNumber,
+        completedAt: DateTime.now(),
+        totalQuestions: state.totalQuestions,
+        correctCount: state.correctCount,
+        wrongCount: state.wrongCount,
+        score: state.score,
+        maxScore: state.maxScore,
+        results: state.results,
+      );
+
+      List<DailyPlanDayModel> updatedDays = [
+        currentDayModel,
+        ...state.dailyPlanDays.where((d) => d.dayNumber != dayNumber)
+      ];
+
       if (_apiService != null) {
         try {
           final cloudDays = await _apiService.getDayHistories();
@@ -568,21 +585,6 @@ class QuizController extends StateNotifier<QuizState> {
             updatedDays = cloudDays;
           }
         } catch (_) {}
-      } else {
-        // Fallback for standalone mock/unit tests
-        final fallbackDay = DailyPlanDayModel(
-          id: DateTime.now().millisecondsSinceEpoch,
-          dailyQuizPlanId: int.tryParse(plan.id) ?? 0,
-          dayNumber: dayNumber,
-          completedAt: DateTime.now(),
-          totalQuestions: state.totalQuestions,
-          correctCount: state.correctCount,
-          wrongCount: state.wrongCount,
-          score: state.score,
-          maxScore: state.maxScore,
-          results: state.results,
-        );
-        updatedDays = [fallbackDay, ...state.dailyPlanDays];
       }
 
       if (!mounted) return;

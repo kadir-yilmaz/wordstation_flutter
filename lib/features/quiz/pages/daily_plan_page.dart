@@ -14,6 +14,7 @@ import '../../words/controllers/word_list_controller.dart';
 import '../../words/models/word_model.dart';
 import '../controllers/quiz_controller.dart';
 import '../models/daily_quiz_plan_model.dart';
+import '../models/quiz_history_model.dart';
 import '../pages/quiz_history_page.dart';
 import '../widgets/active_quiz_view.dart';
 import '../widgets/quiz_history_view.dart';
@@ -893,13 +894,32 @@ class _DailyPlanPageState extends ConsumerState<DailyPlanPage> {
     bool isDark,
   ) {
     final now = DateTime.now();
-    final todayHistory = quizState.historyList
-        .where((h) =>
-            h.isDailyQuiz &&
-            h.date.year == now.year &&
-            h.date.month == now.month &&
-            h.date.day == now.day)
-        .firstOrNull;
+    final todayDay = quizState.dailyPlanDays
+        .where((d) =>
+            d.completedAt.year == now.year &&
+            d.completedAt.month == now.month &&
+            d.completedAt.day == now.day)
+        .firstOrNull ?? quizState.dailyPlanDays.firstOrNull;
+
+    final todayHistory = todayDay != null
+        ? QuizHistoryModel(
+            id: todayDay.id.toString(),
+            date: todayDay.completedAt,
+            title: '${todayDay.dayNumber}. Gün',
+            score: todayDay.score,
+            maxScore: todayDay.maxScore,
+            totalQuestions: todayDay.totalQuestions,
+            correctCount: todayDay.correctCount,
+            wrongCount: todayDay.wrongCount,
+            isDailyQuiz: true,
+            results: todayDay.results,
+          )
+        : quizState.historyList
+            .where((h) =>
+                h.date.year == now.year &&
+                h.date.month == now.month &&
+                h.date.day == now.day)
+            .firstOrNull;
 
     final isCompleted = quizState.isDailyQuizCompletedToday;
 
@@ -919,6 +939,30 @@ class _DailyPlanPageState extends ConsumerState<DailyPlanPage> {
                 .contains(w.id))
             .toList();
 
+    final effectiveHistory = todayHistory ??
+        (isCompleted && studyWords.isNotEmpty
+            ? QuizHistoryModel(
+                id: 'today_completed',
+                date: now,
+                title: '${plan.currentDay}. Gün',
+                score: studyWords.length * 10,
+                maxScore: studyWords.length * 10,
+                totalQuestions: studyWords.length,
+                correctCount: studyWords.length,
+                wrongCount: 0,
+                isDailyQuiz: true,
+                results: studyWords
+                    .map((w) => QuizQuestionResult(
+                          word: w,
+                          questionText: plan.isEnglishToTurkish ? w.en : w.tr,
+                          correctAnswer: plan.isEnglishToTurkish ? w.tr : w.en,
+                          selectedAnswer: plan.isEnglishToTurkish ? w.tr : w.en,
+                          isCorrect: true,
+                        ))
+                    .toList(),
+              )
+            : null);
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -932,9 +976,13 @@ class _DailyPlanPageState extends ConsumerState<DailyPlanPage> {
                   onTap: () {
                     HapticFeedback.mediumImpact();
                     if (isCompleted) {
-                      if (todayHistory != null) {
+                      if (effectiveHistory != null) {
                         showQuizHistoryDetailModal(
-                            context, todayHistory, isDark, allWords);
+                            context, effectiveHistory, isDark, allWords);
+                      } else {
+                        setState(() {
+                          _showHistory = true;
+                        });
                       }
                     } else {
                       quizNotifier.startDailyQuizForToday();
@@ -1017,8 +1065,8 @@ class _DailyPlanPageState extends ConsumerState<DailyPlanPage> {
                             const SizedBox(height: 2),
                             Text(
                               isCompleted
-                                  ? (todayHistory != null
-                                      ? '%${todayHistory.percentage} Doğru'
+                                  ? (effectiveHistory != null
+                                      ? '%${effectiveHistory.percentage} Doğru'
                                       : 'İncele')
                                   : '${plan.nextBatchCount} Yeni Soru',
                               style: const TextStyle(
