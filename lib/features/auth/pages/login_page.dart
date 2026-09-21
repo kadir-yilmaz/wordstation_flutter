@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import '../../../core/router/app_routes.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/widgets/custom_button.dart';
 import '../../../core/widgets/custom_text_field.dart';
@@ -293,7 +294,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                           ),
                           const SizedBox(width: 6),
                           GestureDetector(
-                            onTap: () => context.push('/register'),
+                            onTap: () => context.push(AppRoutes.register),
                             child: const Text(
                               'Kayıt Ol',
                               style: TextStyle(

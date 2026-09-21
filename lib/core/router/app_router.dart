@@ -15,6 +15,33 @@ import '../../features/words/pages/study_session_page.dart';
 import '../../features/words/pages/synonyms_page.dart';
 import '../../features/words/pages/words_list_page.dart';
 import '../../features/words/models/word_model.dart';
+import 'app_routes.dart';
+
+/// Sekme navigator anahtarları
+final wordsNavKey = GlobalKey<NavigatorState>(debugLabel: 'wordsNav');
+final synonymsNavKey = GlobalKey<NavigatorState>(debugLabel: 'synonymsNav');
+final quizNavKey = GlobalKey<NavigatorState>(debugLabel: 'quizNav');
+final planNavKey = GlobalKey<NavigatorState>(debugLabel: 'planNav');
+final profileNavKey = GlobalKey<NavigatorState>(debugLabel: 'profileNav');
+
+final branchNavKeys = [
+  wordsNavKey,
+  synonymsNavKey,
+  quizNavKey,
+  planNavKey,
+  profileNavKey,
+];
+
+Widget _buildStudySessionPage(GoRouterState state) {
+  final extra = state.extra as Map<String, dynamic>? ?? {};
+  return StudySessionPage(
+    words: (extra['words'] as List<WordModel>?) ?? [],
+    initialIndex: (extra['initialIndex'] as int?) ?? 0,
+    listTitle: extra['listTitle'] as String?,
+    showSearchBar: (extra['showSearchBar'] as bool?) ?? true,
+    isReadOnly: (extra['isReadOnly'] as bool?) ?? false,
+  );
+}
 
 /// Merkezi GoRouter provider'ı.
 /// Auth durumunu dinler ve otomatik yönlendirme yapar.
@@ -22,7 +49,7 @@ final routerProvider = Provider<GoRouter>((ref) {
   final authState = ref.watch(authControllerProvider);
 
   return GoRouter(
-    initialLocation: '/words',
+    initialLocation: AppRoutes.words,
     debugLogDiagnostics: false,
 
     // ─── Auth Guard ─────────────────────────────────────
@@ -36,13 +63,13 @@ final routerProvider = Provider<GoRouter>((ref) {
       if (isLoading) return null;
 
       final isOnAuthRoute =
-          currentLocation == '/login' || currentLocation == '/register';
+          currentLocation == AppRoutes.login || currentLocation == AppRoutes.register;
 
       // Giriş yapmamış ve auth sayfasında değil → login'e gönder
-      if (!isAuthenticated && !isOnAuthRoute) return '/login';
+      if (!isAuthenticated && !isOnAuthRoute) return AppRoutes.login;
 
       // Giriş yapmış ama auth sayfasında → ana sayfaya gönder
-      if (isAuthenticated && isOnAuthRoute) return '/words';
+      if (isAuthenticated && isOnAuthRoute) return AppRoutes.words;
 
       return null;
     },
@@ -51,61 +78,108 @@ final routerProvider = Provider<GoRouter>((ref) {
     routes: [
       // Auth Routes (shell dışında)
       GoRoute(
-        path: '/login',
+        path: AppRoutes.login,
         builder: (context, state) => const LoginPage(),
       ),
       GoRoute(
-        path: '/register',
+        path: AppRoutes.register,
         builder: (context, state) => const RegisterPage(),
       ),
 
       // Ana uygulama — StatefulShellRoute ile bottom navigation
       StatefulShellRoute.indexedStack(
         builder: (context, state, navigationShell) {
-          return MainNavigationShell(navigationShell: navigationShell);
+          return MainNavigationShell(
+            navigationShell: navigationShell,
+            branchNavKeys: branchNavKeys,
+          );
         },
         branches: [
           // Tab 0: My Lists (Words)
           StatefulShellBranch(
+            navigatorKey: wordsNavKey,
             routes: [
               GoRoute(
-                path: '/words',
+                path: AppRoutes.words,
                 builder: (context, state) => const WordsListPage(),
+                routes: [
+                  GoRoute(
+                    path: 'study',
+                    builder: (context, state) => _buildStudySessionPage(state),
+                  ),
+                ],
+              ),
+              // Geriye dönük uyumluluk: doğrudan /study çağrılırsa da Tab 0 içinde tabbar ile açılır
+              GoRoute(
+                path: AppRoutes.study,
+                builder: (context, state) => _buildStudySessionPage(state),
               ),
             ],
           ),
           // Tab 1: Synonyms
           StatefulShellBranch(
+            navigatorKey: synonymsNavKey,
             routes: [
               GoRoute(
-                path: '/synonyms',
+                path: AppRoutes.synonyms,
                 builder: (context, state) => const SynonymsPage(),
+                routes: [
+                  GoRoute(
+                    path: 'study',
+                    builder: (context, state) => _buildStudySessionPage(state),
+                  ),
+                ],
               ),
             ],
           ),
           // Tab 2: Quiz
           StatefulShellBranch(
+            navigatorKey: quizNavKey,
             routes: [
               GoRoute(
-                path: '/quiz',
+                path: AppRoutes.quiz,
                 builder: (context, state) => const QuizPage(),
+                routes: [
+                  GoRoute(
+                    path: 'study',
+                    builder: (context, state) => _buildStudySessionPage(state),
+                  ),
+                  GoRoute(
+                    path: 'history',
+                    builder: (context, state) {
+                      final extra = state.extra as Map<String, dynamic>? ?? {};
+                      return QuizHistoryPage(
+                        isDailyQuiz: (extra['isDailyQuiz'] as bool?) ?? false,
+                        title: (extra['title'] as String?) ?? 'Test Geçmişi',
+                      );
+                    },
+                  ),
+                ],
               ),
             ],
           ),
           // Tab 3: Daily Plan
           StatefulShellBranch(
+            navigatorKey: planNavKey,
             routes: [
               GoRoute(
-                path: '/plan',
+                path: AppRoutes.plan,
                 builder: (context, state) => const DailyPlanPage(),
+                routes: [
+                  GoRoute(
+                    path: 'study',
+                    builder: (context, state) => _buildStudySessionPage(state),
+                  ),
+                ],
               ),
             ],
           ),
           // Tab 4: Profile
           StatefulShellBranch(
+            navigatorKey: profileNavKey,
             routes: [
               GoRoute(
-                path: '/profile',
+                path: AppRoutes.profile,
                 builder: (context, state) => const ProfilePage(),
               ),
             ],
@@ -114,24 +188,9 @@ final routerProvider = Provider<GoRouter>((ref) {
       ),
 
       // ─── Full-Screen Overlay Routes ───────────────────
-      // StudySessionPage — karmaşık nesne geçişi, extra ile
-      GoRoute(
-        path: '/study',
-        builder: (context, state) {
-          final extra = state.extra as Map<String, dynamic>? ?? {};
-          return StudySessionPage(
-            words: (extra['words'] as List<WordModel>?) ?? [],
-            initialIndex: (extra['initialIndex'] as int?) ?? 0,
-            listTitle: extra['listTitle'] as String?,
-            showSearchBar: (extra['showSearchBar'] as bool?) ?? true,
-            isReadOnly: (extra['isReadOnly'] as bool?) ?? false,
-          );
-        },
-      ),
-
       // AddEditWordPage — nesne geçişi + pop result
       GoRoute(
-        path: '/add-word',
+        path: AppRoutes.addWord,
         builder: (context, state) {
           final extra = state.extra as Map<String, dynamic>? ?? {};
           return AddEditWordPage(
@@ -143,7 +202,7 @@ final routerProvider = Provider<GoRouter>((ref) {
 
       // QuizHistoryPage
       GoRoute(
-        path: '/quiz-history',
+        path: AppRoutes.quizHistory,
         builder: (context, state) {
           final extra = state.extra as Map<String, dynamic>? ?? {};
           return QuizHistoryPage(
@@ -155,7 +214,7 @@ final routerProvider = Provider<GoRouter>((ref) {
 
       // TokenInspectorPage
       GoRoute(
-        path: '/token-inspector',
+        path: AppRoutes.tokenInspector,
         builder: (context, state) => const TokenInspectorPage(),
       ),
     ],

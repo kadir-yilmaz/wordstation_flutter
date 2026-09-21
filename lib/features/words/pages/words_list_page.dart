@@ -1,3 +1,4 @@
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -8,6 +9,7 @@ import '../../../core/widgets/custom_button.dart';
 import '../../../core/widgets/network_error_view.dart';
 import '../../../core/widgets/no_internet_dialog.dart';
 import '../../../core/widgets/responsive_layout.dart';
+import '../../../core/router/app_routes.dart';
 import '../controllers/word_list_controller.dart';
 
 class WordsListPage extends ConsumerStatefulWidget {
@@ -273,7 +275,7 @@ class _WordsListPageState extends ConsumerState<WordsListPage> {
         .where((w) => w.listName == listName)
         .toList();
 
-    context.push('/study', extra: {
+    context.push(AppRoutes.wordsStudy, extra: {
       'words': listWords,
       'listTitle': listName,
     }).then((_) {
@@ -332,32 +334,41 @@ class _WordsListPageState extends ConsumerState<WordsListPage> {
                       ],
                     ),
 
-                    // + Add List Button
-                    Material(
-                      color: Colors.transparent,
-                      child: InkWell(
-                        onTap: _showAddListDialog,
-                        borderRadius: BorderRadius.circular(14),
-                        child: Container(
-                          padding: const EdgeInsets.all(10),
-                          decoration: BoxDecoration(
-                            gradient: AppColors.turquoiseGradient,
+                    Row(
+                      children: [
+                        // Sort & Reorder Menu Button
+                        _buildSortMenuButton(isDark),
+                        const SizedBox(width: 10),
+
+                        // + Add List Button
+                        Material(
+                          color: Colors.transparent,
+                          child: InkWell(
+                            onTap: _showAddListDialog,
                             borderRadius: BorderRadius.circular(14),
-                            boxShadow: [
-                              BoxShadow(
-                                color: AppColors.turquoise.withValues(alpha: 0.35),
-                                blurRadius: 10,
-                                offset: const Offset(0, 4),
+                            child: Container(
+                              padding: const EdgeInsets.all(10),
+                              decoration: BoxDecoration(
+                                gradient: AppColors.turquoiseGradient,
+                                borderRadius: BorderRadius.circular(14),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: AppColors.turquoise
+                                        .withValues(alpha: 0.35),
+                                    blurRadius: 10,
+                                    offset: const Offset(0, 4),
+                                  ),
+                                ],
                               ),
-                            ],
-                          ),
-                          child: const Icon(
-                            Icons.add_rounded,
-                            color: Colors.white,
-                            size: 26,
+                              child: const Icon(
+                                Icons.add_rounded,
+                                color: Colors.white,
+                                size: 26,
+                              ),
+                            ),
                           ),
                         ),
-                      ),
+                      ],
                     ),
                   ],
                 ),
@@ -386,50 +397,46 @@ class _WordsListPageState extends ConsumerState<WordsListPage> {
                             )
                           : wordListState.listNames.isEmpty
                               ? _buildEmptyState(isDark)
-                              : isDesktop
-                              ? GridView.builder(
+                              : ReorderableListView.builder(
                                   physics: const AlwaysScrollableScrollPhysics(
                                     parent: BouncingScrollPhysics(),
                                   ),
                                   padding:
                                       const EdgeInsets.fromLTRB(20, 8, 20, 40),
-                                  gridDelegate:
-                                      const SliverGridDelegateWithFixedCrossAxisCount(
-                                    crossAxisCount: 2,
-                                    crossAxisSpacing: 16,
-                                    mainAxisSpacing: 16,
-                                    mainAxisExtent: 100,
-                                  ),
                                   itemCount: wordListState.listNames.length,
-                                  itemBuilder: (context, index) {
-                                    final listName =
-                                        wordListState.listNames[index];
-                                    final gradient = _listGradients[
-                                        index % _listGradients.length];
-
-                                    final wordCount = wordListState
-                                            .wordCountsByList[listName] ??
-                                        0;
-
-                                    return _buildListCard(
-                                      listName: listName,
-                                      wordCount: wordCount,
-                                      gradient: gradient,
-                                      onTap: () => _openListStudy(listName),
-                                      onRename: () =>
-                                          _showRenameDialog(listName),
-                                      onDelete: () =>
-                                          _showDeleteDialog(listName),
+                                  buildDefaultDragHandles: false,
+                                  // ignore: deprecated_member_use
+                                  onReorder: (oldIndex, newIndex) {
+                                    ref
+                                        .read(wordListControllerProvider.notifier)
+                                        .reorderLists(oldIndex, newIndex);
+                                  },
+                                  proxyDecorator: (child, index, animation) {
+                                    return AnimatedBuilder(
+                                      animation: animation,
+                                      builder: (context, child) {
+                                        final animValue = Curves.easeInOut
+                                            .transform(animation.value);
+                                        final elevation =
+                                            lerpDouble(0, 10, animValue)!;
+                                        final scale =
+                                            lerpDouble(1, 1.02, animValue)!;
+                                        return Transform.scale(
+                                          scale: scale,
+                                          child: Material(
+                                            elevation: elevation,
+                                            color: Colors.transparent,
+                                            shadowColor: Colors.black
+                                                .withValues(alpha: 0.35),
+                                            borderRadius:
+                                                BorderRadius.circular(20),
+                                            child: child,
+                                          ),
+                                        );
+                                      },
+                                      child: child,
                                     );
                                   },
-                                )
-                              : ListView.builder(
-                                  physics: const AlwaysScrollableScrollPhysics(
-                                    parent: BouncingScrollPhysics(),
-                                  ),
-                                  padding:
-                                      const EdgeInsets.fromLTRB(20, 8, 20, 40),
-                                  itemCount: wordListState.listNames.length,
                                   itemBuilder: (context, index) {
                                     final listName =
                                         wordListState.listNames[index];
@@ -441,17 +448,23 @@ class _WordsListPageState extends ConsumerState<WordsListPage> {
                                         0;
 
                                     return Padding(
+                                      key: ValueKey(listName),
                                       padding:
                                           const EdgeInsets.only(bottom: 14),
-                                      child: _buildListCard(
-                                        listName: listName,
-                                        wordCount: wordCount,
-                                        gradient: gradient,
-                                        onTap: () => _openListStudy(listName),
-                                        onRename: () =>
-                                            _showRenameDialog(listName),
-                                        onDelete: () =>
-                                            _showDeleteDialog(listName),
+                                      child: ReorderableDelayedDragStartListener(
+                                        index: index,
+                                        child: _buildListCard(
+                                          index: index,
+                                          listName: listName,
+                                          wordCount: wordCount,
+                                          gradient: gradient,
+                                          onTap: () =>
+                                              _openListStudy(listName),
+                                          onRename: () =>
+                                              _showRenameDialog(listName),
+                                          onDelete: () =>
+                                              _showDeleteDialog(listName),
+                                        ),
                                       ),
                                     );
                                   },
@@ -465,7 +478,131 @@ class _WordsListPageState extends ConsumerState<WordsListPage> {
     );
   }
 
+  Widget _buildSortMenuButton(bool isDark) {
+    return PopupMenuButton<String>(
+      tooltip: 'Sırala / Düzenle',
+      icon: Container(
+        padding: const EdgeInsets.all(10),
+        decoration: BoxDecoration(
+          color: isDark ? AppColors.darkCardElevated : Colors.white,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: isDark ? const Color(0xFF38383A) : const Color(0xFFE5E5EA),
+            width: 1,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.05),
+              blurRadius: 8,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: Icon(
+          Icons.swap_vert_rounded,
+          color: isDark ? AppColors.darkTextPrimary : AppColors.lightTextPrimary,
+          size: 24,
+        ),
+      ),
+      color: isDark ? AppColors.darkCardElevated : Colors.white,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: isDark
+            ? const BorderSide(color: AppColors.darkBorder, width: 0.8)
+            : BorderSide.none,
+      ),
+      onSelected: (val) {
+        final notifier = ref.read(wordListControllerProvider.notifier);
+        switch (val) {
+          case 'az':
+            notifier.sortListsAlphabetical(ascending: true);
+            break;
+          case 'za':
+            notifier.sortListsAlphabetical(ascending: false);
+            break;
+          case 'count_desc':
+            notifier.sortListsByWordCount(descending: true);
+            break;
+          case 'count_asc':
+            notifier.sortListsByWordCount(descending: false);
+            break;
+          case 'reset':
+            notifier.resetListOrder();
+            break;
+        }
+      },
+      itemBuilder: (ctx) => [
+        PopupMenuItem(
+          enabled: false,
+          child: Text(
+            'LİSTE SIRALAMASI',
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 0.8,
+              color: isDark ? AppColors.darkTextMuted : AppColors.lightTextMuted,
+            ),
+          ),
+        ),
+        const PopupMenuDivider(),
+        const PopupMenuItem(
+          value: 'az',
+          child: Row(
+            children: [
+              Icon(Icons.sort_by_alpha_rounded, size: 20),
+              SizedBox(width: 10),
+              Text('A\'dan Z\'ye'),
+            ],
+          ),
+        ),
+        const PopupMenuItem(
+          value: 'za',
+          child: Row(
+            children: [
+              Icon(Icons.sort_by_alpha_rounded, size: 20),
+              SizedBox(width: 10),
+              Text('Z\'den A\'ya'),
+            ],
+          ),
+        ),
+        const PopupMenuItem(
+          value: 'count_desc',
+          child: Row(
+            children: [
+              Icon(Icons.arrow_downward_rounded, size: 20),
+              SizedBox(width: 10),
+              Text('Kelime Sayısı (Çoktan Aza)'),
+            ],
+          ),
+        ),
+        const PopupMenuItem(
+          value: 'count_asc',
+          child: Row(
+            children: [
+              Icon(Icons.arrow_upward_rounded, size: 20),
+              SizedBox(width: 10),
+              Text('Kelime Sayısı (Azdan Çoğa)'),
+            ],
+          ),
+        ),
+        const PopupMenuDivider(),
+        const PopupMenuItem(
+          value: 'reset',
+          child: Row(
+            children: [
+              Icon(Icons.refresh_rounded, size: 20, color: AppColors.error),
+              SizedBox(width: 10),
+              Text('Sıralamayı Sıfırla',
+                  style: TextStyle(color: AppColors.error)),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
   Widget _buildListCard({
+    required int index,
     required String listName,
     required int wordCount,
     required List<Color> gradient,
@@ -597,11 +734,34 @@ class _WordsListPageState extends ConsumerState<WordsListPage> {
 
                 const SizedBox(width: 4),
 
+                // Drag & Reorder Handle
+                ReorderableDragStartListener(
+                  index: index,
+                  child: Tooltip(
+                    message: 'Sürükleyip sırala',
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 6, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.18),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: const Icon(
+                        Icons.drag_indicator_rounded,
+                        color: Colors.white,
+                        size: 20,
+                      ),
+                    ),
+                  ),
+                ),
+
+                const SizedBox(width: 6),
+
                 // Right Arrow
                 const Icon(
                   Icons.arrow_forward_ios_rounded,
-                  color: Colors.white,
-                  size: 18,
+                  color: Colors.white70,
+                  size: 16,
                 ),
               ],
             ),

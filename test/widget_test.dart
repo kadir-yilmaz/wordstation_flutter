@@ -15,10 +15,17 @@ import 'package:wordstation_flutter/features/quiz/models/quiz_history_model.dart
 import 'package:wordstation_flutter/features/quiz/pages/daily_plan_page.dart';
 import 'package:wordstation_flutter/features/quiz/pages/quiz_history_page.dart';
 import 'package:wordstation_flutter/features/quiz/pages/quiz_page.dart';
+import 'package:dio/dio.dart';
+import 'package:wordstation_flutter/core/network/api_client.dart';
 import 'package:wordstation_flutter/features/words/controllers/study_controller.dart';
+import 'package:wordstation_flutter/features/words/controllers/word_list_controller.dart';
 import 'package:wordstation_flutter/features/words/models/synonym_group_model.dart';
 import 'package:wordstation_flutter/features/words/models/word_model.dart';
 import 'package:wordstation_flutter/features/words/pages/study_session_page.dart';
+import 'package:wordstation_flutter/features/words/pages/words_list_page.dart';
+import 'package:wordstation_flutter/features/words/services/word_service.dart';
+import 'package:wordstation_flutter/features/navigation/main_navigation_page.dart';
+import 'package:go_router/go_router.dart';
 import 'package:wordstation_flutter/main.dart';
 
 void main() {
@@ -210,39 +217,30 @@ void main() {
       expect(plan.isEnglishToTurkish, isTrue);
     });
 
-    test('DailyQuizPlanModel Open Buffet mode parsing, progression and computed properties', () {
-      final buffetJson = {
+    test('DailyQuizPlanModel sequential progression and computed properties', () {
+      final sequentialJson = {
         'id': 42,
-        'title': 'YDS 2500 Açık Büfe',
         'listName': 'YDS',
-        'planType': 1,
         'dailyCount': 50,
         'shuffledWordIds': List.generate(2500, (i) => i + 1),
-        'completedWordIds': [1, 2, 3, 4, 5],
-        'dailySelectedWordIds': [6, 7, 8],
-        'currentPointer': 0,
+        'currentPointer': 200,
         'streakDays': 5,
         'isEnglishToTurkish': true,
         'isActive': true,
         'createdAt': '2026-09-21T10:00:00Z',
       };
 
-      final plan = DailyQuizPlanModel.fromJson(buffetJson);
-      expect(plan.isOpenBuffet, isTrue);
-      expect(plan.displayTitle, 'YDS 2500 Açık Büfe');
+      final plan = DailyQuizPlanModel.fromJson(sequentialJson);
+      expect(plan.listName, 'YDS');
       expect(plan.totalWords, 2500);
-      expect(plan.completedWordsCount, 5);
-      expect(plan.buffetPoolRemainingCount, 2495);
-      expect(plan.dailySelectedWordIds, [6, 7, 8]);
-      expect(plan.hasDailyBuffetSelection, isTrue);
-      expect(plan.progressRatio, 5 / 2500);
+      expect(plan.currentPointer, 200);
+      expect(plan.progressRatio, 200 / 2500);
 
       // Serialization
       final json = plan.toJson();
       final fromJson = DailyQuizPlanModel.fromJson(json);
-      expect(fromJson.isOpenBuffet, isTrue);
-      expect(fromJson.buffetPoolRemainingCount, 2495);
-      expect(fromJson.dailySelectedWordIds.length, 3);
+      expect(fromJson.currentPointer, 200);
+      expect(fromJson.totalWords, 2500);
     });
   });
 
@@ -422,7 +420,7 @@ void main() {
       expect(afterClear, isNull);
     });
 
-    test('Quiz Controller Open Buffet plan creation, word selection, and pool return', () async {
+    test('Quiz Controller sequential plan creation and daily quiz start', () async {
       final sampleWords = List.generate(
         100,
         (i) => WordModel(id: i + 1, en: 'word_${i + 1}', tr: 'kelime_${i + 1}', listName: 'YDS'),
@@ -434,81 +432,21 @@ void main() {
       );
 
       final created = await controller.createPlan(
-        title: 'YDS 100 Buffet',
         listName: 'YDS',
         dailyCount: 10,
         englishToTurkish: true,
-        planType: PlanType.openBuffet,
       );
 
       expect(created, isTrue);
       expect(controller.state.dailyPlan, isNotNull);
-      expect(controller.state.dailyPlan!.isOpenBuffet, isTrue);
       expect(controller.state.dailyPlan!.totalWords, 100);
-      expect(controller.state.dailyPlan!.buffetPoolRemainingCount, 100);
+      expect(controller.state.dailyPlan!.dailyCount, 10);
 
-      // Select 10 words for today
-      final selectedIds = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
-      final selectedOk = await controller.selectBuffetWords(selectedIds);
-      expect(selectedOk, isTrue);
-      expect(controller.state.dailyPlan!.dailySelectedWordIds, selectedIds);
-
-      // Start quiz for today with the buffet selection
+      // Start quiz for today
       controller.startDailyQuizForToday();
       expect(controller.state.isDailyQuiz, isTrue);
       expect(controller.state.questions.length, 10);
-      expect(controller.state.questions.first.word.id, 1);
-
-      // Simulate a completed word returned to pool
-      final planWithCompleted = controller.state.dailyPlan!.copyWith(completedWordIds: [1, 2, 3]);
-      controller.state = controller.state.copyWith(dailyPlan: planWithCompleted);
-      expect(controller.state.dailyPlan!.completedWordsCount, 3);
-      expect(controller.state.dailyPlan!.buffetPoolRemainingCount, 97);
-
-      // Return word 2 to pool
-      await controller.returnWordToBuffetPool(2);
-      expect(controller.state.dailyPlan!.completedWordIds, [1, 3]);
-      expect(controller.state.dailyPlan!.buffetPoolRemainingCount, 98);
-    });
-
-    test('Quiz Controller Multi-plan switching', () async {
-      final sampleWords = List.generate(
-        30,
-        (i) => WordModel(id: i + 1, en: 'w$i', tr: 'k$i', listName: 'L1'),
-      );
-
-      final controller = QuizController(
-        sampleWords,
-        soundService: SoundService(enableAudio: false),
-      );
-
-      // Create Plan 1 (Sequential)
-      await controller.createPlan(
-        title: 'Plan 1',
-        listName: 'L1',
-        dailyCount: 5,
-        englishToTurkish: true,
-        planType: PlanType.sequential,
-      );
-
-      // Create Plan 2 (Open Buffet)
-      await controller.createPlan(
-        title: 'Plan 2',
-        listName: 'L1',
-        dailyCount: 10,
-        englishToTurkish: false,
-        planType: PlanType.openBuffet,
-      );
-
-      expect(controller.state.allPlans.length, 2);
-      expect(controller.state.dailyPlan!.title, 'Plan 2');
-
-      // Switch back to Plan 1
-      final plan1 = controller.state.allPlans.firstWhere((p) => p.title == 'Plan 1');
-      final switched = await controller.switchActivePlan(plan1.id);
-      expect(switched, isTrue);
-      expect(controller.state.dailyPlan!.title, 'Plan 1');
-      expect(controller.state.dailyPlan!.isOpenBuffet, isFalse);
+      expect(controller.state.questions.first.word.id, isNotNull);
     });
   });
 
@@ -626,12 +564,247 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Günlük Quiz Planı'), findsOneWidget);
+    expect(find.text('HEDEF KELİME LİSTESİ'), findsOneWidget);
   });
 
-  testWidgets('MainNavigationPage renders 5 tabs including Plan as 4th tab', (WidgetTester tester) async {
-    // Bu test go_router StatefulNavigationShell mock'u gerektirdiği için
-    // go_router entegrasyonu sonrası ayrı kurulumla güncellenmelidir.
-  }, skip: true); // Requires go_router StatefulNavigationShell mock after router migration
+  testWidgets('Study session routes render tabbar in MainNavigationShell', (WidgetTester tester) async {
+    const testWord = WordModel(id: 1, en: 'solitude', tr: 'yalnızlık', listName: 'B2');
+
+    final testWordsNavKey = GlobalKey<NavigatorState>();
+    final testSynonymsNavKey = GlobalKey<NavigatorState>();
+    final testQuizNavKey = GlobalKey<NavigatorState>();
+    final testPlanNavKey = GlobalKey<NavigatorState>();
+    final testProfileNavKey = GlobalKey<NavigatorState>();
+
+    final testRouter = GoRouter(
+      initialLocation: '/words',
+      routes: [
+        StatefulShellRoute.indexedStack(
+          builder: (context, state, navigationShell) {
+            return MainNavigationShell(
+              navigationShell: navigationShell,
+              branchNavKeys: [
+                testWordsNavKey,
+                testSynonymsNavKey,
+                testQuizNavKey,
+                testPlanNavKey,
+                testProfileNavKey,
+              ],
+            );
+          },
+          branches: [
+            StatefulShellBranch(
+              navigatorKey: testWordsNavKey,
+              routes: [
+                GoRoute(
+                  path: '/words',
+                  builder: (context, state) => const Scaffold(body: Text('Words List')),
+                  routes: [
+                    GoRoute(
+                      path: 'study',
+                      builder: (context, state) => const StudySessionPage(
+                        words: [testWord],
+                        listTitle: 'B2',
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+            StatefulShellBranch(
+              navigatorKey: testSynonymsNavKey,
+              routes: [
+                GoRoute(path: '/synonyms', builder: (c, s) => const Scaffold(body: Text('Synonyms List'))),
+              ],
+            ),
+            StatefulShellBranch(
+              navigatorKey: testQuizNavKey,
+              routes: [
+                GoRoute(path: '/quiz', builder: (c, s) => const Scaffold(body: Text('Quiz Page'))),
+              ],
+            ),
+            StatefulShellBranch(
+              navigatorKey: testPlanNavKey,
+              routes: [
+                GoRoute(
+                  path: '/plan',
+                  builder: (context, state) => const Scaffold(body: Text('Plan Page')),
+                  routes: [
+                    GoRoute(
+                      path: 'study',
+                      builder: (context, state) => const StudySessionPage(
+                        words: [testWord],
+                        listTitle: 'Plan Study',
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+            StatefulShellBranch(
+              navigatorKey: testProfileNavKey,
+              routes: [
+                GoRoute(path: '/profile', builder: (c, s) => const Scaffold(body: Text('Profile Page'))),
+              ],
+            ),
+          ],
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(
+      ProviderScope(
+        child: MaterialApp.router(
+          routerConfig: testRouter,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // Verify initial Words List and tab bar items visible
+    expect(find.text('Words List'), findsOneWidget);
+    expect(find.text('My Lists'), findsOneWidget);
+    expect(find.text('Plan'), findsOneWidget);
+
+    // Push /words/study
+    testRouter.push('/words/study');
+    await tester.pumpAndSettle();
+
+    // Verify StudySessionPage is displayed AND tabbar (My Lists, Plan) is visible!
+    expect(find.text('solitude'), findsOneWidget);
+    expect(find.text('My Lists'), findsOneWidget);
+    expect(find.text('Plan'), findsOneWidget);
+
+    // Pop back to words list
+    testRouter.pop();
+    await tester.pumpAndSettle();
+    expect(find.text('Words List'), findsOneWidget);
+    expect(find.text('My Lists'), findsOneWidget);
+  });
+
+  testWidgets('MainNavigationShell tab history navigates back through visited tabs', (WidgetTester tester) async {
+    final navKey0 = GlobalKey<NavigatorState>();
+    final navKey1 = GlobalKey<NavigatorState>();
+    final navKey2 = GlobalKey<NavigatorState>();
+    final navKey3 = GlobalKey<NavigatorState>();
+    final navKey4 = GlobalKey<NavigatorState>();
+
+    final testRouter = GoRouter(
+      initialLocation: '/words',
+      routes: [
+        StatefulShellRoute.indexedStack(
+          builder: (context, state, navigationShell) {
+            return MainNavigationShell(
+              navigationShell: navigationShell,
+              branchNavKeys: [navKey0, navKey1, navKey2, navKey3, navKey4],
+            );
+          },
+          branches: [
+            StatefulShellBranch(
+              navigatorKey: navKey0,
+              routes: [
+                GoRoute(path: '/words', builder: (c, s) => const Scaffold(body: Text('Words Tab'))),
+              ],
+            ),
+            StatefulShellBranch(
+              navigatorKey: navKey1,
+              routes: [
+                GoRoute(path: '/synonyms', builder: (c, s) => const Scaffold(body: Text('Synonyms Tab'))),
+              ],
+            ),
+            StatefulShellBranch(
+              navigatorKey: navKey2,
+              routes: [
+                GoRoute(path: '/quiz', builder: (c, s) => const Scaffold(body: Text('Quiz Tab'))),
+              ],
+            ),
+            StatefulShellBranch(
+              navigatorKey: navKey3,
+              routes: [
+                GoRoute(path: '/plan', builder: (c, s) => const Scaffold(body: Text('Plan Tab'))),
+              ],
+            ),
+            StatefulShellBranch(
+              navigatorKey: navKey4,
+              routes: [
+                GoRoute(path: '/profile', builder: (c, s) => const Scaffold(body: Text('Profile Tab'))),
+              ],
+            ),
+          ],
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(
+      ProviderScope(
+        child: MaterialApp.router(
+          routerConfig: testRouter,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Words Tab'), findsOneWidget);
+
+    // Tap Plan tab (index 3 in UI)
+    await tester.tap(find.text('Plan'));
+    await tester.pumpAndSettle();
+    expect(find.text('Plan Tab'), findsOneWidget);
+
+    // Simulate system back button
+    final popHandled = await tester.binding.handlePopRoute();
+    expect(popHandled, isTrue);
+    await tester.pumpAndSettle();
+
+    // Verify it returned to Words Tab (previous tab in history)!
+    expect(find.text('Words Tab'), findsOneWidget);
+  });
+
+  testWidgets('DailyPlanPage header back button returns from sub-screen to plans list', (WidgetTester tester) async {
+    final samplePlan = DailyQuizPlanModel(
+      id: 'plan-test',
+      listName: 'YDS',
+      dailyCount: 10,
+      shuffledWordIds: List.generate(50, (i) => i + 1),
+      createdAt: DateTime(2026, 1, 1),
+    );
+
+    final mockController = QuizController(
+      const [],
+      soundService: SoundService(enableAudio: false),
+    );
+    mockController.state = mockController.state.copyWith(
+      isPlanLoaded: true,
+      dailyPlan: samplePlan,
+    );
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          quizControllerProvider.overrideWith((ref) => mockController),
+        ],
+        child: const MaterialApp(
+          home: DailyPlanPage(),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Günlük Quiz Planı'), findsOneWidget);
+
+    // Tap active plan card to open history
+    await tester.tap(find.text('0 Günlük Seri'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Geçmiş Quizler'), findsOneWidget);
+
+    // Tap back button in header
+    await tester.tap(find.byIcon(Icons.arrow_back_ios_new_rounded));
+    await tester.pumpAndSettle();
+
+    // Should return to Daily Plan dashboard
+    expect(find.text('Günlük Quiz Planı'), findsOneWidget);
+  });
 
   testWidgets('StudySessionPage renders in read-only mode without search bar', (WidgetTester tester) async {
     const testWord = WordModel(id: 1, en: 'solitude', tr: 'yalnızlık', listName: 'B2');
@@ -676,6 +849,64 @@ void main() {
       expect(await storage.hasValidToken(), isFalse);
       expect(await storage.getAccessToken(), isNull);
     });
+
+    test('Custom list order persistence and lifecycle', () async {
+      final storage = SecureStorageService();
+      await storage.clearCustomListOrder();
+
+      expect(await storage.getCustomListOrder(), isEmpty);
+
+      await storage.saveCustomListOrder(['YDS', 'B2', 'General']);
+      expect(await storage.getCustomListOrder(), ['YDS', 'B2', 'General']);
+
+      await storage.clearCustomListOrder();
+      expect(await storage.getCustomListOrder(), isEmpty);
+    });
+  });
+
+  group('Daily Plan Overview & Cards Unit and Widget Tests', () {
+    test('DailyQuizPlanModel totalWords, and properties format correctly', () {
+      final plan1 = DailyQuizPlanModel(
+        id: 'plan-1',
+        listName: 'Phrasal Verbs',
+        dailyCount: 10,
+        shuffledWordIds: List.generate(185, (i) => i + 1),
+        createdAt: DateTime(2026, 1, 1),
+      );
+
+      final plan2 = DailyQuizPlanModel(
+        id: 'plan-2',
+        listName: 'YDS',
+        dailyCount: 20,
+        shuffledWordIds: List.generate(2488, (i) => i + 1),
+        createdAt: DateTime(2026, 1, 1),
+      );
+
+      expect(plan1.listName, 'Phrasal Verbs');
+      expect(plan1.totalWords, 185);
+
+      expect(plan2.listName, 'YDS');
+      expect(plan2.totalWords, 2488);
+    });
+
+    testWidgets('DailyPlanPage renders initial frame with Günlük Quiz Planı header', (WidgetTester tester) async {
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            quizControllerProvider.overrideWith((ref) => QuizController(
+                  const [],
+                  soundService: SoundService(enableAudio: false),
+                )),
+          ],
+          child: const MaterialApp(
+            home: DailyPlanPage(),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      expect(find.text('Günlük Quiz Planı'), findsOneWidget);
+    });
   });
 
   testWidgets('WordStationApp smoke test with pump', (WidgetTester tester) async {
@@ -692,6 +923,90 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byType(WordStationApp), findsOneWidget);
   });
+
+  group('Word List Custom Ordering and UI Tests', () {
+    test('applyListOrder sorts alphabetically if saved order is empty', () {
+      final raw = ['General', 'YDS', 'B2', 'A1'];
+      final sorted = WordListController.applyListOrder(raw, []);
+      expect(sorted, ['A1', 'B2', 'General', 'YDS']);
+    });
+
+    test('applyListOrder prioritizes saved order and appends remaining lists alphabetically', () {
+      final raw = ['General', 'YDS', 'B2', 'A1'];
+      final savedOrder = ['YDS', 'B2'];
+      final sorted = WordListController.applyListOrder(raw, savedOrder);
+      // YDS is first, B2 is second, remaining (A1, General) are sorted alphabetically
+      expect(sorted, ['YDS', 'B2', 'A1', 'General']);
+    });
+
+    test('WordListController reorderLists updates state and moves YDS to top', () async {
+      final storage = SecureStorageService();
+      await storage.clearCustomListOrder();
+
+      final mockWords = [
+        const WordModel(id: 1, en: 'apple', tr: 'elma', listName: 'General'),
+        const WordModel(id: 2, en: 'ubiquitous', tr: 'yaygın', listName: 'YDS'),
+        const WordModel(id: 3, en: 'elaborate', tr: 'ayrıntılı', listName: 'B2'),
+      ];
+      final wordService = MockWordService(mockWords);
+      final controller = WordListController(wordService, storageService: storage);
+
+      // Wait for loadInitialData
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+      expect(controller.state.listNames, ['B2', 'General', 'YDS']);
+
+      // Reorder: Move 'YDS' (index 2) to index 0
+      await controller.reorderLists(2, 0);
+
+      expect(controller.state.listNames, ['YDS', 'B2', 'General']);
+      expect(controller.state.listNames.first, 'YDS');
+
+      // Verify persisted in storage
+      final saved = await storage.getCustomListOrder();
+      expect(saved, ['YDS', 'B2', 'General']);
+    });
+
+    testWidgets('WordsListPage renders ReorderableListView, drag handles, and sort menu', (WidgetTester tester) async {
+      final mockWords = [
+        const WordModel(id: 1, en: 'apple', tr: 'elma', listName: 'General'),
+        const WordModel(id: 2, en: 'ubiquitous', tr: 'yaygın', listName: 'YDS'),
+      ];
+      final wordService = MockWordService(mockWords);
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            wordListControllerProvider.overrideWith(
+              (ref) => WordListController(wordService, storageService: SecureStorageService()),
+            ),
+          ],
+          child: const MaterialApp(
+            home: WordsListPage(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('My Lists'), findsOneWidget);
+      expect(find.byType(ReorderableListView), findsOneWidget);
+      expect(find.byIcon(Icons.drag_indicator_rounded), findsNWidgets(2));
+      expect(find.byIcon(Icons.swap_vert_rounded), findsOneWidget);
+    });
+  });
+}
+
+class MockWordService extends WordService {
+  final List<WordModel> mockWords;
+  MockWordService(this.mockWords)
+      : super(ApiClient(Dio()), SecureStorageService());
+
+  @override
+  Future<List<WordModel>> getWords({String? listName}) async {
+    if (listName != null) {
+      return mockWords.where((w) => w.listName == listName).toList();
+    }
+    return mockWords;
+  }
 }
 
 

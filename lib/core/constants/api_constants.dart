@@ -22,15 +22,8 @@ class ApiConstants {
 
   // Daily Quiz & Quiz History endpoints
   static const String dailyQuiz = '/api/dailyquiz';
-  static const String dailyQuizPlans = '/api/dailyquiz/plans';
   static const String dailyQuizProgress = '/api/dailyquiz/progress';
   static const String quizHistory = '/api/quizhistory';
-
-  static String dailyQuizPlanById(dynamic id) => '/api/dailyquiz/plans/$id';
-  static String dailyQuizPlanActivate(dynamic id) => '/api/dailyquiz/plans/$id/activate';
-  static String dailyQuizPlanBuffetWords(dynamic id) => '/api/dailyquiz/plans/$id/buffet-words';
-  static String dailyQuizPlanReturnWord(dynamic id, dynamic wordId) => '/api/dailyquiz/plans/$id/return-word/$wordId';
-  static String dailyQuizPlanReset(dynamic id) => '/api/dailyquiz/plans/$id/reset';
 
   static String wordById(dynamic id) => '/api/words/$id';
   static String wordsByUserId(String userId) => '/api/words/user/$userId';

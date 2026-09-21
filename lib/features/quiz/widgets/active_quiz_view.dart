@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/services/tts_service.dart';
 import '../../../core/theme/app_colors.dart';
@@ -115,15 +116,15 @@ class ActiveQuizView extends ConsumerWidget {
                           ),
                           const SizedBox(height: 16),
 
-                          // 2. Question Big Card with TTS Audio Speaker
+                          // 2. Question Big Card with Centered Word and Larger Pronunciation Button Below
                           Container(
                             padding: const EdgeInsets.symmetric(
-                                horizontal: 20, vertical: 24),
+                                horizontal: 24, vertical: 30),
                             decoration: BoxDecoration(
                               color: isDark
                                   ? AppColors.darkSurface
                                   : Colors.white,
-                              borderRadius: BorderRadius.circular(22),
+                              borderRadius: BorderRadius.circular(24),
                               border: Border.all(
                                 color: isDark
                                     ? AppColors.darkBorder
@@ -135,68 +136,19 @@ class ActiveQuizView extends ConsumerWidget {
                                   color: isDark
                                       ? Colors.black.withValues(alpha: 0.3)
                                       : Colors.black.withValues(alpha: 0.04),
-                                  blurRadius: 14,
-                                  offset: const Offset(0, 4),
+                                  blurRadius: 16,
+                                  offset: const Offset(0, 6),
                                 ),
                               ],
                             ),
                             child: Column(
                               mainAxisSize: MainAxisSize.min,
                               children: [
-                                Row(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: [
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(
-                                          horizontal: 10, vertical: 4),
-                                      decoration: BoxDecoration(
-                                        color: isDark
-                                            ? AppColors.darkCardElevated
-                                            : const Color(0xFFF2F2F7),
-                                        borderRadius: BorderRadius.circular(8),
-                                      ),
-                                      child: Text(
-                                        quizState.isEnglishToTurkish
-                                            ? 'İngilizce ➔ Türkçe'
-                                            : 'Türkçe ➔ İngilizce',
-                                        style: TextStyle(
-                                          fontSize: 11.5,
-                                          fontWeight: FontWeight.w600,
-                                          color: isDark
-                                              ? AppColors.darkTextSecondary
-                                              : AppColors.lightTextSecondary,
-                                        ),
-                                      ),
-                                    ),
-                                    const SizedBox(width: 8),
-                                    // Audio TTS Pronunciation Icon
-                                    IconButton(
-                                      visualDensity: VisualDensity.compact,
-                                      icon: Icon(
-                                        isPlayingTts
-                                            ? Icons.volume_up_rounded
-                                            : Icons.volume_up_outlined,
-                                        color: isPlayingTts
-                                            ? AppColors.turquoise
-                                            : (isDark
-                                                ? AppColors.darkTextSecondary
-                                                : AppColors.lightTextSecondary),
-                                        size: 22,
-                                      ),
-                                      onPressed: () {
-                                        ref
-                                            .read(ttsServiceProvider)
-                                            .speak(question.word.en);
-                                      },
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(height: 10),
                                 Text(
                                   question.questionText,
                                   textAlign: TextAlign.center,
                                   style: TextStyle(
-                                    fontSize: 28,
+                                    fontSize: 30,
                                     fontWeight: FontWeight.w800,
                                     color: isDark
                                         ? AppColors.darkTextPrimary
@@ -204,11 +156,66 @@ class ActiveQuizView extends ConsumerWidget {
                                     letterSpacing: -0.5,
                                   ),
                                 ),
+                                const SizedBox(height: 18),
+                                // Centered, larger pronunciation (TTS) button
+                                InkWell(
+                                  onTap: () {
+                                    HapticFeedback.lightImpact();
+                                    ref
+                                        .read(ttsServiceProvider)
+                                        .speak(question.word.en);
+                                  },
+                                  borderRadius: BorderRadius.circular(30),
+                                  child: AnimatedContainer(
+                                    duration: const Duration(milliseconds: 200),
+                                    width: 54,
+                                    height: 54,
+                                    decoration: BoxDecoration(
+                                      color: isPlayingTts
+                                          ? AppColors.turquoise.withValues(alpha: 0.22)
+                                          : (isDark
+                                              ? const Color(0xFF1E293B)
+                                              : const Color(0xFFF1F5F9)),
+                                      shape: BoxShape.circle,
+                                      border: Border.all(
+                                        color: isPlayingTts
+                                            ? AppColors.turquoise
+                                            : (isDark
+                                                ? AppColors.darkBorder
+                                                : AppColors.lightBorder),
+                                        width: 1.6,
+                                      ),
+                                      boxShadow: [
+                                        if (isPlayingTts)
+                                          BoxShadow(
+                                            color: AppColors.turquoise.withValues(alpha: 0.35),
+                                            blurRadius: 10,
+                                            offset: const Offset(0, 2),
+                                          ),
+                                      ],
+                                    ),
+                                    child: Center(
+                                      child: Icon(
+                                        isPlayingTts
+                                            ? Icons.volume_up_rounded
+                                            : Icons.volume_up_outlined,
+                                        color: isPlayingTts
+                                            ? AppColors.turquoise
+                                            : (isDark
+                                                ? AppColors.darkTextPrimary
+                                                : AppColors.lightTextPrimary),
+                                        size: 28,
+                                      ),
+                                    ),
+                                  ),
+                                ),
                               ],
                             ),
                           ),
 
-                          const SizedBox(height: 20),
+                          // Spacer pushes the option buttons to the bottom of the viewport
+                          const Spacer(),
+                          const SizedBox(height: 16),
 
                           // 3. Options List (A, B, C, D)
                           ...List.generate(question.options.length, (optIdx) {

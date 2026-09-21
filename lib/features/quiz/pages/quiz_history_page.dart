@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import '../../../core/router/app_routes.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/widgets/word_detail_bottom_sheet.dart';
 import '../../words/controllers/word_list_controller.dart';
@@ -299,7 +300,7 @@ class QuizHistoryPage extends ConsumerWidget {
                 onPressed: () {
                   HapticFeedback.selectionClick();
                   final words = entry.results.map((r) => r.word).toList();
-                  context.push('/study', extra: {
+                  context.push(AppRoutes.quizStudy, extra: {
                     'words': words,
                     'listTitle': entry.title,
                     'showSearchBar': false,
@@ -440,7 +441,7 @@ void showQuizHistoryDetailModal(
                         onPressed: () {
                           Navigator.of(ctx).pop();
                           final words = entry.results.map((r) => r.word).toList();
-                          context.push('/study', extra: {
+                          context.push(AppRoutes.quizStudy, extra: {
                             'words': words,
                             'listTitle': entry.title,
                             'showSearchBar': false,

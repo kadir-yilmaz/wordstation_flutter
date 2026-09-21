@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../auth/controllers/auth_controller.dart';
+import '../../../core/storage/secure_storage_service.dart';
 import '../models/word_model.dart';
 import '../services/word_service.dart';
 
@@ -56,7 +57,8 @@ class WordListState {
 final wordListControllerProvider =
     StateNotifierProvider<WordListController, WordListState>((ref) {
   final wordService = ref.watch(wordServiceProvider);
-  final controller = WordListController(wordService);
+  final storageService = ref.watch(secureStorageServiceProvider);
+  final controller = WordListController(wordService, storageService: storageService);
 
   ref.listen<AuthState>(authControllerProvider, (prev, next) {
     if (next.isAuthenticated && prev?.isAuthenticated != true) {
@@ -69,10 +71,16 @@ final wordListControllerProvider =
 
 class WordListController extends StateNotifier<WordListState> {
   final WordService _wordService;
+  final SecureStorageService _storageService;
   Timer? _debounceTimer;
   bool _isFetching = false;
+  List<String> _customOrder = [];
 
-  WordListController(this._wordService) : super(WordListState.initial()) {
+  WordListController(
+    this._wordService, {
+    SecureStorageService? storageService,
+  })  : _storageService = storageService ?? SecureStorageService(),
+        super(WordListState.initial()) {
     loadInitialData();
   }
 
@@ -82,8 +90,36 @@ class WordListController extends StateNotifier<WordListState> {
     super.dispose();
   }
 
+  /// Belirlenen özel sıralama (savedOrder) listesini esas alarak listeleri sıralar.
+  /// Kayıtlı sıralamadaki listeler en başa yerleştirilir; yeni/kayıtsız listeler
+  /// ise sona alfabetik olarak eklenir.
+  static List<String> applyListOrder(
+      List<String> rawLists, List<String> savedOrder) {
+    if (savedOrder.isEmpty) {
+      return List<String>.from(rawLists)..sort();
+    }
+    final orderMap = <String, int>{};
+    for (int i = 0; i < savedOrder.length; i++) {
+      orderMap[savedOrder[i]] = i;
+    }
+
+    final sorted = List<String>.from(rawLists);
+    sorted.sort((a, b) {
+      final aIndex = orderMap[a];
+      final bIndex = orderMap[b];
+      if (aIndex != null && bIndex != null) {
+        return aIndex.compareTo(bIndex);
+      }
+      if (aIndex != null) return -1;
+      if (bIndex != null) return 1;
+      return a.toLowerCase().compareTo(b.toLowerCase());
+    });
+    return sorted;
+  }
+
   static (List<String>, Map<String, int>) _processListsAndCounts(
-      List<WordModel> words) {
+      List<WordModel> words,
+      [List<String> savedOrder = const []]) {
     final Map<String, int> counts = {};
     for (final w in words) {
       final name = (w.listName == null || w.listName!.trim().isEmpty)
@@ -92,7 +128,7 @@ class WordListController extends StateNotifier<WordListState> {
       if (name == 'Tümü' || name == 'All') continue;
       counts[name] = (counts[name] ?? 0) + 1;
     }
-    final lists = counts.keys.toList()..sort();
+    final lists = applyListOrder(counts.keys.toList(), savedOrder);
     return (lists, counts);
   }
 
@@ -109,9 +145,12 @@ class WordListController extends StateNotifier<WordListState> {
     }
 
     try {
+      if (_customOrder.isEmpty) {
+        _customOrder = await _storageService.getCustomListOrder();
+      }
       // Yalnızca TEK bir optimize getWords çağrısı!
       final words = await _wordService.getWords();
-      final (listNames, counts) = _processListsAndCounts(words);
+      final (listNames, counts) = _processListsAndCounts(words, _customOrder);
 
       if (!mounted) return;
       state = state.copyWith(
@@ -146,7 +185,11 @@ class WordListController extends StateNotifier<WordListState> {
     state = state.copyWith(isLoading: true, errorMessage: null);
     try {
       await _wordService.addList(trimmed);
-      await loadInitialData();
+      if (!_customOrder.contains(trimmed)) {
+        _customOrder = [trimmed, ..._customOrder];
+        await _storageService.saveCustomListOrder(_customOrder);
+      }
+      await loadInitialData(forceRefresh: true);
       return true;
     } catch (e) {
       if (!mounted) return false;
@@ -163,7 +206,12 @@ class WordListController extends StateNotifier<WordListState> {
     state = state.copyWith(isLoading: true, errorMessage: null);
     try {
       await _wordService.renameList(oldName, newName.trim());
-      await loadInitialData();
+      final idx = _customOrder.indexOf(oldName);
+      if (idx != -1) {
+        _customOrder[idx] = newName.trim();
+        await _storageService.saveCustomListOrder(_customOrder);
+      }
+      await loadInitialData(forceRefresh: true);
       return true;
     } catch (e) {
       if (!mounted) return false;
@@ -179,7 +227,9 @@ class WordListController extends StateNotifier<WordListState> {
     state = state.copyWith(isLoading: true, errorMessage: null);
     try {
       await _wordService.deleteList(listName);
-      await loadInitialData();
+      _customOrder.remove(listName);
+      await _storageService.saveCustomListOrder(_customOrder);
+      await loadInitialData(forceRefresh: true);
       return true;
     } catch (e) {
       if (!mounted) return false;
@@ -189,6 +239,63 @@ class WordListController extends StateNotifier<WordListState> {
       );
       return false;
     }
+  }
+
+  /// Listeleri kullanıcı tarafından sürükleyip bırakıldığında yeniden sıralar
+  /// ve bu sırayı yerel depolamada kalıcı olarak saklar.
+  Future<void> reorderLists(int oldIndex, int newIndex) async {
+    if (oldIndex < 0 || oldIndex >= state.listNames.length) return;
+    if (newIndex < 0 || newIndex > state.listNames.length) return;
+
+    if (oldIndex < newIndex) {
+      newIndex -= 1;
+    }
+    if (oldIndex == newIndex) return;
+
+    final updated = List<String>.from(state.listNames);
+    final moved = updated.removeAt(oldIndex);
+    updated.insert(newIndex, moved);
+
+    _customOrder = List<String>.from(updated);
+    state = state.copyWith(listNames: updated);
+
+    await _storageService.saveCustomListOrder(updated);
+  }
+
+  /// Listeleri alfabetik (A-Z veya Z-A) sıralar ve kaydeder.
+  Future<void> sortListsAlphabetical({bool ascending = true}) async {
+    final updated = List<String>.from(state.listNames);
+    if (ascending) {
+      updated.sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
+    } else {
+      updated.sort((a, b) => b.toLowerCase().compareTo(a.toLowerCase()));
+    }
+    _customOrder = List<String>.from(updated);
+    state = state.copyWith(listNames: updated);
+    await _storageService.saveCustomListOrder(updated);
+  }
+
+  /// Listeleri kelime sayısına göre çoktan aza veya azdan çoğa sıralar ve kaydeder.
+  Future<void> sortListsByWordCount({bool descending = true}) async {
+    final updated = List<String>.from(state.listNames);
+    updated.sort((a, b) {
+      final countA = state.wordCountsByList[a] ?? 0;
+      final countB = state.wordCountsByList[b] ?? 0;
+      final cmp = countA.compareTo(countB);
+      if (cmp != 0) return descending ? -cmp : cmp;
+      return a.toLowerCase().compareTo(b.toLowerCase());
+    });
+    _customOrder = List<String>.from(updated);
+    state = state.copyWith(listNames: updated);
+    await _storageService.saveCustomListOrder(updated);
+  }
+
+  /// Listeleri varsayılan sıralamaya sıfırlar.
+  Future<void> resetListOrder() async {
+    final updated = List<String>.from(state.listNames)..sort();
+    _customOrder = [];
+    state = state.copyWith(listNames: updated);
+    await _storageService.clearCustomListOrder();
   }
 
   Future<void> filterByList(String listName) async {
@@ -272,7 +379,8 @@ class WordListController extends StateNotifier<WordListState> {
       if (!mounted) return true;
       // Optimistik: Kelimeyi local state'e ekle, full reload yapma
       final updatedWords = [...state.words, saved];
-      final (listNames, counts) = _processListsAndCounts(updatedWords);
+      final (listNames, counts) =
+          _processListsAndCounts(updatedWords, _customOrder);
       state = state.copyWith(
         words: updatedWords,
         listNames: listNames,
@@ -297,7 +405,8 @@ class WordListController extends StateNotifier<WordListState> {
         if (w.id == saved.id) return saved;
         return w;
       }).toList();
-      final (listNames, counts) = _processListsAndCounts(updatedWords);
+      final (listNames, counts) =
+          _processListsAndCounts(updatedWords, _customOrder);
       state = state.copyWith(
         words: updatedWords,
         listNames: listNames,
@@ -319,7 +428,8 @@ class WordListController extends StateNotifier<WordListState> {
       if (!mounted) return true;
       // Optimistik: Kelimeyi local state'den çıkar, full reload yapma
       final updatedWords = state.words.where((w) => w.id != id).toList();
-      final (listNames, counts) = _processListsAndCounts(updatedWords);
+      final (listNames, counts) =
+          _processListsAndCounts(updatedWords, _customOrder);
       state = state.copyWith(
         words: updatedWords,
         listNames: listNames,

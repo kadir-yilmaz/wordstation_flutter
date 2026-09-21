@@ -152,15 +152,19 @@ class _CustomButtonState extends State<CustomButton> {
                             ),
                             const SizedBox(width: 8),
                           ],
-                          Text(
-                            widget.text,
-                            style: TextStyle(
-                              color: isDisabled
-                                  ? Colors.grey.shade500
-                                  : _textColor,
-                              fontSize: 16,
-                              fontWeight: FontWeight.w600,
-                              letterSpacing: 0.2,
+                          Flexible(
+                            child: Text(
+                              widget.text,
+                              overflow: TextOverflow.ellipsis,
+                              maxLines: 1,
+                              style: TextStyle(
+                                color: isDisabled
+                                    ? Colors.grey.shade500
+                                    : _textColor,
+                                fontSize: 16,
+                                fontWeight: FontWeight.w600,
+                                letterSpacing: 0.2,
+                              ),
                             ),
                           ),
                           if (widget.suffixIcon != null) ...[

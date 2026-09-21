@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import '../../../core/router/app_routes.dart';
 import '../../../core/network/dio_error_handler.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/widgets/no_internet_dialog.dart';
@@ -194,7 +195,7 @@ class _StudySessionPageState extends ConsumerState<StudySessionPage>
 
   Future<void> _handleAddWord() async {
     final studyNotifier = ref.read(studyControllerProvider.notifier);
-    final result = await context.push<WordModel>('/add-word', extra: {
+    final result = await context.push<WordModel>(AppRoutes.addWord, extra: {
       'initialListName': widget.listTitle != 'All' ? widget.listTitle : null,
     });
 
@@ -210,7 +211,7 @@ class _StudySessionPageState extends ConsumerState<StudySessionPage>
     _isNavigating = true;
     try {
       final studyNotifier = ref.read(studyControllerProvider.notifier);
-      final updated = await context.push<WordModel>('/add-word', extra: {
+      final updated = await context.push<WordModel>(AppRoutes.addWord, extra: {
         'wordToEdit': currentWord,
       });
 
@@ -371,11 +372,13 @@ class _StudySessionPageState extends ConsumerState<StudySessionPage>
           centerTitle: true,
           actions: [
             if (!widget.isReadOnly) ...[
-              // Add Word Button (Green)
+              // Delete Button (Green)
               IconButton(
-                icon: const Icon(Icons.add_rounded, size: 24, color: Color(0xFF34C759)),
-                tooltip: 'Add Word',
-                onPressed: _handleAddWord,
+                icon: const Icon(Icons.delete_outline_rounded, size: 22, color: Color(0xFF34C759)),
+                tooltip: 'Delete',
+                onPressed: hasWords && currentWord != null
+                    ? () => _handleDeleteCurrentWord(currentWord)
+                    : null,
               ),
 
               // Edit Word Button (Green)
@@ -387,13 +390,11 @@ class _StudySessionPageState extends ConsumerState<StudySessionPage>
                     : null,
               ),
 
-              // Delete Button (Green)
+              // Add Word Button (Green)
               IconButton(
-                icon: const Icon(Icons.delete_outline_rounded, size: 22, color: Color(0xFF34C759)),
-                tooltip: 'Delete',
-                onPressed: hasWords && currentWord != null
-                    ? () => _handleDeleteCurrentWord(currentWord)
-                    : null,
+                icon: const Icon(Icons.add_rounded, size: 24, color: Color(0xFF34C759)),
+                tooltip: 'Add Word',
+                onPressed: _handleAddWord,
               ),
               const SizedBox(width: 4),
             ],

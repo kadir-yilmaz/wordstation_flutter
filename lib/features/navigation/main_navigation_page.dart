@@ -12,10 +12,12 @@ import '../words/pages/synonyms_page.dart';
 /// Tab içerikleri [navigationShell] tarafından yönetilir.
 class MainNavigationShell extends ConsumerStatefulWidget {
   final StatefulNavigationShell navigationShell;
+  final List<GlobalKey<NavigatorState>>? branchNavKeys;
 
   const MainNavigationShell({
     super.key,
     required this.navigationShell,
+    this.branchNavKeys,
   });
 
   @override
@@ -50,9 +52,15 @@ class _MainNavigationShellState extends ConsumerState<MainNavigationShell>
     }
   }
 
+  final List<int> _tabHistory = [0];
+
   int get _currentIndex => widget.navigationShell.currentIndex;
 
   void _onItemTapped(int index) {
+    if (index != _currentIndex) {
+      _tabHistory.remove(index);
+      _tabHistory.add(index);
+    }
     // go_router'ın branch geçiş mekanizması
     widget.navigationShell.goBranch(
       index,
@@ -76,7 +84,16 @@ class _MainNavigationShellState extends ConsumerState<MainNavigationShell>
       canPop: false,
       onPopInvokedWithResult: (didPop, result) async {
         if (didPop) return;
-        // Quiz and daily-plan tabs share one controller. Back should leave
+        // 1. Aktif sekmenin kendi navigator'ında geri gidilecek bir sayfa varsa (ör. StudySessionPage), onu kapat
+        if (widget.branchNavKeys != null &&
+            _currentIndex < widget.branchNavKeys!.length) {
+          final currentBranchNav = widget.branchNavKeys![_currentIndex];
+          if (currentBranchNav.currentState?.canPop() ?? false) {
+            currentBranchNav.currentState!.pop();
+            return;
+          }
+        }
+        // 2. Quiz and daily-plan tabs share one controller. Back should leave
         // the active/result quiz and return to that tab's setup screen.
         if (_currentIndex == 2 || _currentIndex == 3) {
           final quiz = ref.read(quizControllerProvider);
@@ -85,10 +102,21 @@ class _MainNavigationShellState extends ConsumerState<MainNavigationShell>
             return;
           }
         }
+        // 3. Sekmeler arası geçmiş (Tab History): Kullanıcının en son geldiği sekmeye dön
+        if (_tabHistory.length > 1) {
+          _tabHistory.removeLast();
+          final prevIndex = _tabHistory.last;
+          widget.navigationShell.goBranch(prevIndex);
+          return;
+        }
+        // 4. Sekme geçmişi tükendi ama 0. sekmede değilsek ana sekmeye dön
         if (_currentIndex != 0) {
+          _tabHistory.clear();
+          _tabHistory.add(0);
           _onItemTapped(0);
           return;
         }
+        // 5. Ana sekmedeyiz ve geri gidilecek rota kalmadı → uygulamadan çık
         SystemNavigator.pop();
       },
       child: Scaffold(

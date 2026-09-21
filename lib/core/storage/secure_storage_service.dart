@@ -39,6 +39,7 @@ class SecureStorageService {
 
   // Persistent cache keys
   static const String _keyDailyQuizPlanCache = 'cached_daily_quiz_plan';
+  static const String _keyCustomListOrder = 'custom_list_order';
 
   // Legacy keys for cleanup
   static const String _keyQuizHistory = 'quiz_history';
@@ -232,6 +233,39 @@ class SecureStorageService {
       await _storage.delete(key: _keyDailyQuizPlanCache);
     } catch (e) {
       debugPrint('SecureStorageService.clearCachedDailyPlan error: $e');
+    }
+  }
+
+  // Persistent Custom List Order
+  Future<void> saveCustomListOrder(List<String> order) async {
+    try {
+      final jsonStr = jsonEncode(order);
+      await _storage.write(key: _keyCustomListOrder, value: jsonStr);
+    } catch (e) {
+      debugPrint('SecureStorageService.saveCustomListOrder error: $e');
+    }
+  }
+
+  Future<List<String>> getCustomListOrder() async {
+    try {
+      final jsonStr = await _storage.read(key: _keyCustomListOrder);
+      if (jsonStr != null && jsonStr.isNotEmpty) {
+        final decoded = jsonDecode(jsonStr);
+        if (decoded is List) {
+          return decoded.map((e) => e.toString()).toList();
+        }
+      }
+    } catch (e) {
+      debugPrint('SecureStorageService.getCustomListOrder error: $e');
+    }
+    return [];
+  }
+
+  Future<void> clearCustomListOrder() async {
+    try {
+      await _storage.delete(key: _keyCustomListOrder);
+    } catch (e) {
+      debugPrint('SecureStorageService.clearCustomListOrder error: $e');
     }
   }
 

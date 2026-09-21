@@ -55,108 +55,132 @@ class _QuizPageState extends ConsumerState<QuizPage> {
     // Completed quizzes still keep questions in state, so results must
     // be checked before the in-progress view.
     if (!quizState.isDailyQuiz && quizState.isQuizCompleted) {
-      return QuizResultView(
-        quizState: quizState,
-        quizNotifier: quizNotifier,
-        allWords: wordListState.words,
+      return PopScope(
+        canPop: false,
+        onPopInvokedWithResult: (didPop, _) {
+          if (didPop) return;
+          quizNotifier.resetToSetup();
+        },
+        child: QuizResultView(
+          quizState: quizState,
+          quizNotifier: quizNotifier,
+          allWords: wordListState.words,
+        ),
       );
     }
 
     if (!quizState.isDailyQuiz && quizState.questions.isNotEmpty) {
-      return ActiveQuizView(
-        quizState: quizState,
-        quizNotifier: quizNotifier,
+      return PopScope(
+        canPop: false,
+        onPopInvokedWithResult: (didPop, _) {
+          if (didPop) return;
+          quizNotifier.resetToSetup();
+        },
+        child: ActiveQuizView(
+          quizState: quizState,
+          quizNotifier: quizNotifier,
+        ),
       );
     }
 
-    return Scaffold(
-      backgroundColor:
-          isDark ? AppColors.darkBackground : AppColors.lightBackground,
-      body: SafeArea(
-        child: ResponsiveContent(
-          maxWidth: 620,
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              // Page Header (Centered, Clean Typography)
-              Column(
-                children: [
-                  Text(
-                    'Kelime Testi',
-                    style: TextStyle(
-                      fontSize: 24,
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: -0.4,
-                      color: isDark
-                          ? AppColors.darkTextPrimary
-                          : AppColors.lightTextPrimary,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    'Kelime dağarcığını test et ve pekiştir',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w500,
-                      color: isDark
-                          ? AppColors.darkTextSecondary
-                          : AppColors.lightTextSecondary,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 18),
+    final canPop = _activeTabIndex == 0;
 
-              // Segmented Tab Switcher (Centered & Compact)
-              Center(
-                child: Container(
-                  constraints: const BoxConstraints(maxWidth: 380),
-                  padding: const EdgeInsets.all(4),
-                  decoration: BoxDecoration(
-                    color: isDark ? AppColors.darkSurface : const Color(0xFFEBEBF0),
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(
-                      color: isDark ? AppColors.darkBorder : Colors.transparent,
-                      width: 1,
+    return PopScope(
+      canPop: canPop,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) return;
+        if (_activeTabIndex == 1) {
+          setState(() => _activeTabIndex = 0);
+        }
+      },
+      child: Scaffold(
+        backgroundColor:
+            isDark ? AppColors.darkBackground : AppColors.lightBackground,
+        body: SafeArea(
+          child: ResponsiveContent(
+            maxWidth: 620,
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                // Page Header (Centered, Clean Typography)
+                Column(
+                  children: [
+                    Text(
+                      'Kelime Testi',
+                      style: TextStyle(
+                        fontSize: 24,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: -0.4,
+                        color: isDark
+                            ? AppColors.darkTextPrimary
+                            : AppColors.lightTextPrimary,
+                      ),
                     ),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Expanded(
-                        child: _buildTabButton(
-                          title: 'Quiz Yap',
-                          icon: Icons.quiz_rounded,
-                          isSelected: _activeTabIndex == 0,
-                          isDark: isDark,
-                          onTap: () => setState(() => _activeTabIndex = 0),
-                        ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Kelime dağarcığını test et ve pekiştir',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w500,
+                        color: isDark
+                            ? AppColors.darkTextSecondary
+                            : AppColors.lightTextSecondary,
                       ),
-                      Expanded(
-                        child: _buildTabButton(
-                          title: 'Geçmiş Sonuçlar',
-                          icon: Icons.history_rounded,
-                          isSelected: _activeTabIndex == 1,
-                          isDark: isDark,
-                          onTap: () => setState(() => _activeTabIndex = 1),
-                        ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 18),
+
+                // Segmented Tab Switcher (Centered & Compact)
+                Center(
+                  child: Container(
+                    constraints: const BoxConstraints(maxWidth: 380),
+                    padding: const EdgeInsets.all(4),
+                    decoration: BoxDecoration(
+                      color: isDark ? AppColors.darkSurface : const Color(0xFFEBEBF0),
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(
+                        color: isDark ? AppColors.darkBorder : const Color(0xFFE5E5EA),
+                        width: 1,
                       ),
-                    ],
+                    ),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: _buildTabButton(
+                            title: 'Quiz Yap',
+                            icon: Icons.quiz_rounded,
+                            isSelected: _activeTabIndex == 0,
+                            isDark: isDark,
+                            onTap: () => setState(() => _activeTabIndex = 0),
+                          ),
+                        ),
+                        Expanded(
+                          child: _buildTabButton(
+                            title: 'Geçmiş Sonuçlar',
+                            icon: Icons.history_rounded,
+                            isSelected: _activeTabIndex == 1,
+                            isDark: isDark,
+                            onTap: () => setState(() => _activeTabIndex = 1),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
-              ),
-              const SizedBox(height: 20),
+                const SizedBox(height: 20),
 
-              // Body Content
-              Expanded(
-                child: _activeTabIndex == 0
-                    ? _buildGeneralQuizTab(
-                        context, wordListState, quizState, quizNotifier, isDark)
-                    : const QuizHistoryView(isDailyQuiz: false),
-              ),
-            ],
+                // Body Content
+                Expanded(
+                  child: _activeTabIndex == 0
+                      ? _buildGeneralQuizTab(
+                          context, wordListState, quizState, quizNotifier, isDark)
+                      : const QuizHistoryView(isDailyQuiz: false),
+                ),
+              ],
+            ),
           ),
         ),
       ),

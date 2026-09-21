@@ -25,7 +25,6 @@ class QuizState {
   final List<QuizQuestionResult> results;
   final List<QuizHistoryModel> historyList;
   final DailyQuizPlanModel? dailyPlan;
-  final List<DailyQuizPlanModel> allPlans;
   final bool isDailyQuizCompletedToday;
   final bool hasPlanLoadError;
   final bool isPlanLoaded;
@@ -44,7 +43,6 @@ class QuizState {
     this.results = const [],
     this.historyList = const [],
     this.dailyPlan,
-    this.allPlans = const [],
     this.isDailyQuizCompletedToday = false,
     this.hasPlanLoadError = false,
     this.isPlanLoaded = false,
@@ -78,7 +76,6 @@ class QuizState {
     List<QuizQuestionResult>? results,
     List<QuizHistoryModel>? historyList,
     DailyQuizPlanModel? dailyPlan,
-    List<DailyQuizPlanModel>? allPlans,
     bool clearDailyPlan = false,
     bool? isDailyQuizCompletedToday,
     bool? hasPlanLoadError,
@@ -98,7 +95,6 @@ class QuizState {
       results: results ?? this.results,
       historyList: historyList ?? this.historyList,
       dailyPlan: clearDailyPlan ? null : (dailyPlan ?? this.dailyPlan),
-      allPlans: allPlans ?? this.allPlans,
       isDailyQuizCompletedToday:
           isDailyQuizCompletedToday ?? this.isDailyQuizCompletedToday,
       hasPlanLoadError: hasPlanLoadError ?? this.hasPlanLoadError,
@@ -206,8 +202,7 @@ class QuizController extends StateNotifier<QuizState> {
       }
     }
 
-    // 2. Günlük Quiz planlarını API'den çek
-    List<DailyQuizPlanModel> allPlans = [];
+    // 2. Günlük Quiz planını API'den çek
     DailyQuizPlanModel? cloudPlan;
     bool isDailyDone = false;
     bool hasPlanError = false;
@@ -215,15 +210,7 @@ class QuizController extends StateNotifier<QuizState> {
 
     if (_apiService != null) {
       try {
-        allPlans = await _apiService.getAllPlans();
-        if (allPlans.isNotEmpty) {
-          cloudPlan = allPlans.firstWhere((p) => p.isActive, orElse: () => allPlans.first);
-        } else {
-          cloudPlan = await _apiService.getPlan();
-          if (cloudPlan != null) {
-            allPlans = [cloudPlan];
-          }
-        }
+        cloudPlan = await _apiService.getPlan();
 
         if (cloudPlan != null) {
           isDailyDone = cloudPlan.isCompletedToday(todayStr);
@@ -242,7 +229,6 @@ class QuizController extends StateNotifier<QuizState> {
     if (!mounted) return;
     state = state.copyWith(
       historyList: history,
-      allPlans: allPlans.isNotEmpty ? allPlans : state.allPlans,
       dailyPlan: _apiService != null
           ? (cloudPlan ?? (hasPlanError ? state.dailyPlan : null))
           : state.dailyPlan,
@@ -254,44 +240,11 @@ class QuizController extends StateNotifier<QuizState> {
     );
   }
 
-  /// Birden fazla plan arasında aktif planı değiştirir
-  Future<bool> switchActivePlan(String planId) async {
-    final target = state.allPlans.firstWhere(
-      (p) => p.id == planId,
-      orElse: () => state.dailyPlan ?? DailyQuizPlanModel(id: '', listName: '', dailyCount: 0, shuffledWordIds: const [], createdAt: DateTime.fromMillisecondsSinceEpoch(0)),
-    );
-    if (target.id.isEmpty) return false;
-
-    if (_apiService != null) {
-      try {
-        await _apiService.setActivePlan(planId);
-      } catch (e) {
-        dev.log('QuizController.switchActivePlan error: $e');
-      }
-    }
-
-    final todayStr = _formatTodayDate();
-    final updatedAllPlans = state.allPlans.map((p) {
-      return p.copyWith(isActive: p.id == planId);
-    }).toList();
-
-    await _storageService?.saveCachedDailyPlan(target);
-
-    state = state.copyWith(
-      dailyPlan: target,
-      allPlans: updatedAllPlans,
-      isDailyQuizCompletedToday: target.isCompletedToday(todayStr),
-    );
-    return true;
-  }
-
-  /// Yeni bir plan oluşturur (Otomatik Sıralı veya Açık Büfe)
+  /// Yeni bir plan oluşturur (Sequential)
   Future<bool> createPlan({
-    String? title,
     required String listName,
     required int dailyCount,
     required bool englishToTurkish,
-    PlanType planType = PlanType.sequential,
   }) async {
     final matchingWords = (listName == 'Tümü' || listName == 'All')
         ? List<WordModel>.from(_allWords)
@@ -302,30 +255,18 @@ class QuizController extends StateNotifier<QuizState> {
       return false;
     }
 
-    final shuffled = List<WordModel>.from(matchingWords)..shuffle(_random);
-    final shuffledIds = shuffled.map((w) => w.id).toList();
-
     if (_apiService != null) {
       try {
-        final newPlan = await _apiService.createPlan(
-          title: title,
+        final newPlan = await _apiService.createOrResetPlan(
           listName: listName,
           dailyCount: dailyCount,
           isEnglishToTurkish: englishToTurkish,
-          planType: planType,
-          shuffledWordIds: shuffledIds,
-          setAsActive: true,
         );
 
         if (newPlan != null) {
-          final updatedList = [
-            newPlan,
-            ...state.allPlans.map((p) => p.copyWith(isActive: false))
-          ];
           await _storageService?.saveCachedDailyPlan(newPlan);
           state = state.copyWith(
             dailyPlan: newPlan,
-            allPlans: updatedList,
             isDailyQuizCompletedToday: false,
             hasPlanLoadError: false,
             errorMessage: null,
@@ -342,31 +283,23 @@ class QuizController extends StateNotifier<QuizState> {
     }
 
     // Fallback for standalone mock testing
+    final shuffled = List<WordModel>.from(matchingWords)..shuffle(_random);
+    final shuffledIds = shuffled.map((w) => w.id).toList();
+
     final fallbackPlan = DailyQuizPlanModel(
       id: '${DateTime.now().microsecondsSinceEpoch}_${_random.nextInt(9999)}',
-      title: title ?? '',
       listName: listName,
-      planType: planType,
       dailyCount: dailyCount,
       shuffledWordIds: shuffledIds,
-      completedWordIds: const [],
-      dailySelectedWordIds: const [],
       currentPointer: 0,
       lastCompletedDate: null,
       streakDays: 0,
       isEnglishToTurkish: englishToTurkish,
-      isActive: true,
       createdAt: DateTime.now(),
     );
 
-    final updatedAll = [
-      fallbackPlan,
-      ...state.allPlans.map((p) => p.copyWith(isActive: false))
-    ];
-
     state = state.copyWith(
       dailyPlan: fallbackPlan,
-      allPlans: updatedAll,
       isDailyQuizCompletedToday: false,
       hasPlanLoadError: false,
       errorMessage: null,
@@ -374,115 +307,12 @@ class QuizController extends StateNotifier<QuizState> {
     return true;
   }
 
-  Future<bool> startOrResetDailyPlan({
-    required String listName,
-    required int dailyCount,
-    required bool englishToTurkish,
-  }) async {
-    return createPlan(
-      listName: listName,
-      dailyCount: dailyCount,
-      englishToTurkish: englishToTurkish,
-      planType: PlanType.sequential,
-    );
-  }
-
-  /// Açık Büfe modunda bugün için kelime seçimi yapar (Örn: 50 kelime)
-  Future<bool> selectBuffetWords(List<dynamic> wordIds) async {
-    final activePlan = state.dailyPlan;
-    if (activePlan == null || !activePlan.isOpenBuffet) return false;
-
-    if (_apiService != null) {
-      try {
-        final updated = await _apiService.selectBuffetWords(activePlan.id, wordIds);
-        if (updated != null) {
-          _updatePlanInState(updated);
-          return true;
-        }
-      } catch (e) {
-        dev.log('QuizController.selectBuffetWords error: $e');
-        state = state.copyWith(
-          errorMessage: e.toString().replaceAll('Exception: ', ''),
-        );
-        return false;
-      }
-    }
-
-    final localUpdated = activePlan.copyWith(dailySelectedWordIds: wordIds);
-    _updatePlanInState(localUpdated);
-    return true;
-  }
-
-  /// Havuzdan düşmüş bir kelimeyi tekrar açık büfe havuzuna iade eder
-  Future<bool> returnWordToBuffetPool(int wordId) async {
-    final activePlan = state.dailyPlan;
-    if (activePlan == null || !activePlan.isOpenBuffet) return false;
-
-    if (_apiService != null) {
-      try {
-        final updated = await _apiService.returnWordToBuffetPool(activePlan.id, wordId);
-        if (updated != null) {
-          _updatePlanInState(updated);
-          return true;
-        }
-      } catch (e) {
-        dev.log('QuizController.returnWordToBuffetPool error: $e');
-      }
-    }
-
-    final newCompleted = List<dynamic>.from(activePlan.completedWordIds)..remove(wordId);
-    final localUpdated = activePlan.copyWith(completedWordIds: newCompleted);
-    _updatePlanInState(localUpdated);
-    return true;
-  }
-
-  void _updatePlanInState(DailyQuizPlanModel updated) {
-    final updatedAllPlans = state.allPlans.map((p) => p.id == updated.id ? updated : p).toList();
-    _storageService?.saveCachedDailyPlan(updated);
-    state = state.copyWith(
-      dailyPlan: updated,
-      allPlans: updatedAllPlans,
-      isDailyQuizCompletedToday: updated.isCompletedToday(_formatTodayDate()),
-    );
-  }
-
-  Future<bool> resetPlanProgress([String? planId]) async {
-    final targetId = planId ?? state.dailyPlan?.id;
-    if (targetId == null || targetId.isEmpty) return false;
-
-    if (_apiService != null) {
-      try {
-        final updated = await _apiService.resetPlan(targetId);
-        if (updated != null) {
-          _updatePlanInState(updated);
-          return true;
-        }
-      } catch (e) {
-        dev.log('QuizController.resetPlanProgress error: $e');
-      }
-    }
-
-    if (state.dailyPlan != null && state.dailyPlan!.id == targetId) {
-      final reset = state.dailyPlan!.copyWith(
-        currentPointer: 0,
-        completedWordIds: const [],
-        dailySelectedWordIds: const [],
-        lastCompletedDate: null,
-        streakDays: 0,
-      );
-      _updatePlanInState(reset);
-      return true;
-    }
-    return false;
-  }
-
-  Future<bool> deleteDailyPlan({String? planId}) async {
+  Future<bool> deleteDailyPlan() async {
     state = state.copyWith(errorMessage: null);
-    final targetId = planId ?? state.dailyPlan?.id;
 
     if (_apiService != null) {
       try {
-        await _apiService.deletePlan(planId: targetId);
+        await _apiService.deletePlan();
       } catch (e) {
         dev.log('QuizController.deleteDailyPlan error: $e');
         state = state.copyWith(
@@ -492,20 +322,11 @@ class QuizController extends StateNotifier<QuizState> {
       }
     }
 
-    final remainingAll = state.allPlans.where((p) => p.id != targetId).toList();
-    DailyQuizPlanModel? nextDailyPlan;
-    if (remainingAll.isNotEmpty) {
-      nextDailyPlan = remainingAll.firstWhere((p) => p.isActive, orElse: () => remainingAll.first);
-      await _storageService?.saveCachedDailyPlan(nextDailyPlan);
-    } else {
-      await _storageService?.clearCachedDailyPlan();
-    }
+    await _storageService?.clearCachedDailyPlan();
 
     state = state.copyWith(
-      dailyPlan: nextDailyPlan,
-      allPlans: remainingAll,
-      clearDailyPlan: nextDailyPlan == null,
-      isDailyQuizCompletedToday: nextDailyPlan != null && nextDailyPlan.isCompletedToday(_formatTodayDate()),
+      clearDailyPlan: true,
+      isDailyQuizCompletedToday: false,
       hasPlanLoadError: false,
     );
     return true;
@@ -515,16 +336,10 @@ class QuizController extends StateNotifier<QuizState> {
     final plan = state.dailyPlan;
     if (plan == null || plan.isPlanFinished) return;
 
-    List<dynamic> batchIds;
-    if (plan.isOpenBuffet) {
-      if (plan.dailySelectedWordIds.isEmpty) return;
-      batchIds = plan.dailySelectedWordIds;
-    } else {
-      final start = plan.currentPointer;
-      final end = min(start + plan.dailyCount, plan.totalWords);
-      if (start >= end) return;
-      batchIds = plan.shuffledWordIds.sublist(start, end);
-    }
+    final start = plan.currentPointer;
+    final end = min(start + plan.dailyCount, plan.totalWords);
+    if (start >= end) return;
+    final batchIds = plan.shuffledWordIds.sublist(start, end);
 
     final selectedWords = <WordModel>[];
     for (final id in batchIds) {
@@ -544,9 +359,7 @@ class QuizController extends StateNotifier<QuizState> {
       englishToTurkish: plan.isEnglishToTurkish,
     );
 
-    final title = plan.isOpenBuffet
-        ? '${plan.displayTitle} (Bugünün Quizi)'
-        : 'Günün Quizi (Gün ${plan.currentDay}/${plan.totalDays})';
+    final title = 'Günün Quizi (Gün ${plan.currentDay}/${plan.totalDays})';
 
     state = QuizState(
       questions: questions,
@@ -560,7 +373,6 @@ class QuizController extends StateNotifier<QuizState> {
       results: [],
       historyList: state.historyList,
       dailyPlan: state.dailyPlan,
-      allPlans: state.allPlans,
       isDailyQuizCompletedToday: false,
     );
   }
@@ -615,7 +427,6 @@ class QuizController extends StateNotifier<QuizState> {
       results: [],
       historyList: state.historyList,
       dailyPlan: state.dailyPlan,
-      allPlans: state.allPlans,
       isDailyQuizCompletedToday: state.isDailyQuizCompletedToday,
     );
   }
@@ -741,82 +552,38 @@ class QuizController extends StateNotifier<QuizState> {
       final plan = state.dailyPlan!;
       final todayStr = _formatTodayDate();
       final newStreak = plan.streakDays + 1;
-      final planIdInt = int.tryParse(plan.id);
+      final newPointer = min(plan.currentPointer + state.totalQuestions, plan.totalWords);
 
-      if (plan.isOpenBuffet) {
-        final newlyCompleted = plan.dailySelectedWordIds.isNotEmpty
-            ? plan.dailySelectedWordIds
-            : state.results.map((r) => r.word.id).toList();
-        final updatedCompleted = <dynamic>{...plan.completedWordIds, ...newlyCompleted}.toList();
-
-        if (_apiService != null) {
-          try {
-            final cloudPlan = await _apiService.updateProgress(
-              planId: planIdInt,
-              newPointer: 0,
-              lastCompletedDate: todayStr,
-              streakDays: newStreak,
-              completedWordIds: newlyCompleted,
-            );
-            if (cloudPlan != null) {
-              updatedPlan = cloudPlan;
-            } else {
-              updatedPlan = plan.copyWith(
-                completedWordIds: updatedCompleted,
-                lastCompletedDate: todayStr,
-                streakDays: newStreak,
-              );
-            }
-          } catch (e) {
-            dev.log('QuizController._saveCompletedQuiz buffet progress error: $e');
-            updatedPlan = plan.copyWith(
-              completedWordIds: updatedCompleted,
-              lastCompletedDate: todayStr,
-              streakDays: newStreak,
-            );
-          }
-        } else {
-          updatedPlan = plan.copyWith(
-            completedWordIds: updatedCompleted,
+      if (_apiService != null) {
+        try {
+          final cloudPlan = await _apiService.updateProgress(
+            newPointer: newPointer,
             lastCompletedDate: todayStr,
             streakDays: newStreak,
           );
-        }
-      } else {
-        // Sequential mode
-        final newPointer = min(plan.currentPointer + state.totalQuestions, plan.totalWords);
-        if (_apiService != null) {
-          try {
-            final cloudPlan = await _apiService.updateProgress(
-              planId: planIdInt,
-              newPointer: newPointer,
-              lastCompletedDate: todayStr,
-              streakDays: newStreak,
-            );
-            if (cloudPlan != null) {
-              updatedPlan = cloudPlan;
-            } else {
-              updatedPlan = plan.copyWith(
-                currentPointer: newPointer,
-                lastCompletedDate: todayStr,
-                streakDays: newStreak,
-              );
-            }
-          } catch (e) {
-            dev.log('QuizController._saveCompletedQuiz plan progress API error: $e');
+          if (cloudPlan != null) {
+            updatedPlan = cloudPlan;
+          } else {
             updatedPlan = plan.copyWith(
               currentPointer: newPointer,
               lastCompletedDate: todayStr,
               streakDays: newStreak,
             );
           }
-        } else {
+        } catch (e) {
+          dev.log('QuizController._saveCompletedQuiz plan progress API error: $e');
           updatedPlan = plan.copyWith(
             currentPointer: newPointer,
             lastCompletedDate: todayStr,
             streakDays: newStreak,
           );
         }
+      } else {
+        updatedPlan = plan.copyWith(
+          currentPointer: newPointer,
+          lastCompletedDate: todayStr,
+          streakDays: newStreak,
+        );
       }
     }
 
@@ -835,18 +602,10 @@ class QuizController extends StateNotifier<QuizState> {
       await _storageService?.saveCachedDailyPlan(updatedPlan);
     }
 
-    final updatedAllPlans = state.allPlans.map((p) {
-      if (updatedPlan != null && p.id == updatedPlan.id) {
-        return updatedPlan;
-      }
-      return p;
-    }).toList();
-
     if (!mounted) return;
     state = state.copyWith(
       historyList: updatedHistory,
       dailyPlan: updatedPlan,
-      allPlans: updatedAllPlans,
       isDailyQuizCompletedToday: state.isDailyQuiz ? true : state.isDailyQuizCompletedToday,
     );
   }
