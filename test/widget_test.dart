@@ -209,6 +209,41 @@ void main() {
       expect(plan.streakDays, 3);
       expect(plan.isEnglishToTurkish, isTrue);
     });
+
+    test('DailyQuizPlanModel Open Buffet mode parsing, progression and computed properties', () {
+      final buffetJson = {
+        'id': 42,
+        'title': 'YDS 2500 Açık Büfe',
+        'listName': 'YDS',
+        'planType': 1,
+        'dailyCount': 50,
+        'shuffledWordIds': List.generate(2500, (i) => i + 1),
+        'completedWordIds': [1, 2, 3, 4, 5],
+        'dailySelectedWordIds': [6, 7, 8],
+        'currentPointer': 0,
+        'streakDays': 5,
+        'isEnglishToTurkish': true,
+        'isActive': true,
+        'createdAt': '2026-09-21T10:00:00Z',
+      };
+
+      final plan = DailyQuizPlanModel.fromJson(buffetJson);
+      expect(plan.isOpenBuffet, isTrue);
+      expect(plan.displayTitle, 'YDS 2500 Açık Büfe');
+      expect(plan.totalWords, 2500);
+      expect(plan.completedWordsCount, 5);
+      expect(plan.buffetPoolRemainingCount, 2495);
+      expect(plan.dailySelectedWordIds, [6, 7, 8]);
+      expect(plan.hasDailyBuffetSelection, isTrue);
+      expect(plan.progressRatio, 5 / 2500);
+
+      // Serialization
+      final json = plan.toJson();
+      final fromJson = DailyQuizPlanModel.fromJson(json);
+      expect(fromJson.isOpenBuffet, isTrue);
+      expect(fromJson.buffetPoolRemainingCount, 2495);
+      expect(fromJson.dailySelectedWordIds.length, 3);
+    });
   });
 
   group('Quiz Controller Tests', () {
@@ -385,6 +420,95 @@ void main() {
       await storage.clearCachedDailyPlan();
       final afterClear = await storage.getCachedDailyPlan();
       expect(afterClear, isNull);
+    });
+
+    test('Quiz Controller Open Buffet plan creation, word selection, and pool return', () async {
+      final sampleWords = List.generate(
+        100,
+        (i) => WordModel(id: i + 1, en: 'word_${i + 1}', tr: 'kelime_${i + 1}', listName: 'YDS'),
+      );
+
+      final controller = QuizController(
+        sampleWords,
+        soundService: SoundService(enableAudio: false),
+      );
+
+      final created = await controller.createPlan(
+        title: 'YDS 100 Buffet',
+        listName: 'YDS',
+        dailyCount: 10,
+        englishToTurkish: true,
+        planType: PlanType.openBuffet,
+      );
+
+      expect(created, isTrue);
+      expect(controller.state.dailyPlan, isNotNull);
+      expect(controller.state.dailyPlan!.isOpenBuffet, isTrue);
+      expect(controller.state.dailyPlan!.totalWords, 100);
+      expect(controller.state.dailyPlan!.buffetPoolRemainingCount, 100);
+
+      // Select 10 words for today
+      final selectedIds = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+      final selectedOk = await controller.selectBuffetWords(selectedIds);
+      expect(selectedOk, isTrue);
+      expect(controller.state.dailyPlan!.dailySelectedWordIds, selectedIds);
+
+      // Start quiz for today with the buffet selection
+      controller.startDailyQuizForToday();
+      expect(controller.state.isDailyQuiz, isTrue);
+      expect(controller.state.questions.length, 10);
+      expect(controller.state.questions.first.word.id, 1);
+
+      // Simulate a completed word returned to pool
+      final planWithCompleted = controller.state.dailyPlan!.copyWith(completedWordIds: [1, 2, 3]);
+      controller.state = controller.state.copyWith(dailyPlan: planWithCompleted);
+      expect(controller.state.dailyPlan!.completedWordsCount, 3);
+      expect(controller.state.dailyPlan!.buffetPoolRemainingCount, 97);
+
+      // Return word 2 to pool
+      await controller.returnWordToBuffetPool(2);
+      expect(controller.state.dailyPlan!.completedWordIds, [1, 3]);
+      expect(controller.state.dailyPlan!.buffetPoolRemainingCount, 98);
+    });
+
+    test('Quiz Controller Multi-plan switching', () async {
+      final sampleWords = List.generate(
+        30,
+        (i) => WordModel(id: i + 1, en: 'w$i', tr: 'k$i', listName: 'L1'),
+      );
+
+      final controller = QuizController(
+        sampleWords,
+        soundService: SoundService(enableAudio: false),
+      );
+
+      // Create Plan 1 (Sequential)
+      await controller.createPlan(
+        title: 'Plan 1',
+        listName: 'L1',
+        dailyCount: 5,
+        englishToTurkish: true,
+        planType: PlanType.sequential,
+      );
+
+      // Create Plan 2 (Open Buffet)
+      await controller.createPlan(
+        title: 'Plan 2',
+        listName: 'L1',
+        dailyCount: 10,
+        englishToTurkish: false,
+        planType: PlanType.openBuffet,
+      );
+
+      expect(controller.state.allPlans.length, 2);
+      expect(controller.state.dailyPlan!.title, 'Plan 2');
+
+      // Switch back to Plan 1
+      final plan1 = controller.state.allPlans.firstWhere((p) => p.title == 'Plan 1');
+      final switched = await controller.switchActivePlan(plan1.id);
+      expect(switched, isTrue);
+      expect(controller.state.dailyPlan!.title, 'Plan 1');
+      expect(controller.state.dailyPlan!.isOpenBuffet, isFalse);
     });
   });
 
