@@ -23,6 +23,7 @@ class ApiConstants {
   // Daily Quiz & Quiz History endpoints
   static const String dailyQuiz = '/api/dailyquiz';
   static const String dailyQuizProgress = '/api/dailyquiz/progress';
+  static const String dailyQuizDays = '/api/dailyquiz/days';
   static const String quizHistory = '/api/quizhistory';
 
   static String wordById(dynamic id) => '/api/words/$id';

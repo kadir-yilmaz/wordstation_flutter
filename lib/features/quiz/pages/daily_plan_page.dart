@@ -709,39 +709,20 @@ class _DailyPlanPageState extends ConsumerState<DailyPlanPage> {
           isDark,
         ),
         const SizedBox(height: 20),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            TextButton.icon(
-              icon: const Icon(Icons.refresh_rounded,
-                  size: 16, color: AppColors.darkTextMuted),
-              label: Text(
-                'Planı Sıfırla',
-                style: TextStyle(
-                  fontSize: 13,
-                  color: isDark
-                      ? AppColors.darkTextMuted
-                      : AppColors.lightTextMuted,
-                  fontWeight: FontWeight.w600,
-                ),
+        Center(
+          child: TextButton.icon(
+            icon: const Icon(Icons.delete_outline_rounded,
+                size: 16, color: AppColors.error),
+            label: const Text(
+              'Planı Sil',
+              style: TextStyle(
+                fontSize: 13,
+                color: AppColors.error,
+                fontWeight: FontWeight.w600,
               ),
-              onPressed: () => _confirmResetPlan(context, quizNotifier),
             ),
-            const SizedBox(width: 16),
-            TextButton.icon(
-              icon: const Icon(Icons.delete_outline_rounded,
-                  size: 16, color: AppColors.error),
-              label: const Text(
-                'Planı Sil',
-                style: TextStyle(
-                  fontSize: 13,
-                  color: AppColors.error,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              onPressed: () => _confirmDeletePlan(context, quizNotifier),
-            ),
-          ],
+            onPressed: () => _confirmDeletePlan(context, quizNotifier),
+          ),
         ),
       ],
     );
@@ -1233,47 +1214,6 @@ class _DailyPlanPageState extends ConsumerState<DailyPlanPage> {
     );
   }
 
-  Future<void> _confirmResetPlan(
-    BuildContext context,
-    QuizController quizNotifier,
-  ) async {
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Plan Sıfırlansın mı?'),
-        content: const Text(
-          'Mevcut ilerlemeniz sıfırlanacaktır ve ilk kelimeden itibaren tekrar başlayabileceksiniz. Devam etmek istiyor musunuz?',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text('Vazgeç'),
-          ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: AppColors.error),
-            onPressed: () => Navigator.of(ctx).pop(true),
-            child: const Text('Sıfırla'),
-          ),
-        ],
-      ),
-    );
-
-    if (confirm == true) {
-      // Reset = create same plan again
-      final plan = ref.read(quizControllerProvider).dailyPlan;
-      if (plan != null) {
-        final success = await quizNotifier.createPlan(
-          listName: plan.listName,
-          dailyCount: plan.dailyCount,
-          englishToTurkish: plan.isEnglishToTurkish,
-        );
-        if (!success && context.mounted) {
-          _showWarningSnackBar(context, 'Plan sıfırlanamadı.');
-        }
-      }
-    }
-  }
-
   Future<void> _confirmDeletePlan(
     BuildContext context,
     QuizController quizNotifier,
@@ -1283,7 +1223,7 @@ class _DailyPlanPageState extends ConsumerState<DailyPlanPage> {
       builder: (ctx) => AlertDialog(
         title: const Text('Plan Silinsin mi?'),
         content: const Text(
-          'Bu çalışma planı kalıcı olarak silinecektir. Emin misiniz?',
+          'Bu çalışma planı ve planınıza ait tüm geçmiş kalıcı olarak silinecektir. Emin misiniz?',
         ),
         actions: [
           TextButton(
@@ -1301,6 +1241,12 @@ class _DailyPlanPageState extends ConsumerState<DailyPlanPage> {
 
     if (confirm == true) {
       final success = await quizNotifier.deleteDailyPlan();
+      if (mounted) {
+        setState(() {
+          _showHistory = false;
+          _isCreatingNewPlan = false;
+        });
+      }
       if (!success && context.mounted) {
         _showWarningSnackBar(context, 'Plan silinemedi.');
       }

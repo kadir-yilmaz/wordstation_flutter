@@ -5,6 +5,7 @@ import '../../../core/constants/api_constants.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/network/dio_error_handler.dart';
 import '../../../core/storage/secure_storage_service.dart';
+import '../models/daily_plan_day_model.dart';
 import '../models/daily_quiz_plan_model.dart';
 
 final dailyQuizApiServiceProvider = Provider<DailyQuizApiService>((ref) {
@@ -147,4 +148,68 @@ class DailyQuizApiService {
       rethrow;
     }
   }
+
+  /// Get past day completions for the active plan directly from DB
+  Future<List<DailyPlanDayModel>> getDayHistories() async {
+    try {
+      final userId = await _storage.getUserId();
+      if (userId == null || userId.isEmpty) return [];
+
+      final response = await _apiClient.get(
+        ApiConstants.dailyQuizDays,
+        queryParameters: {'userId': userId},
+      );
+
+      if (response.data != null && response.data is List) {
+        return (response.data as List)
+            .map((item) => DailyPlanDayModel.fromJson(Map<String, dynamic>.from(item as Map)))
+            .toList();
+      }
+      return [];
+    } catch (e) {
+      log('DailyQuizApiService.getDayHistories Error: $e');
+      return [];
+    }
+  }
+
+  /// Save completed daily quiz day directly into DB
+  Future<DailyPlanDayModel?> saveDayHistory({
+    required int dayNumber,
+    required int totalQuestions,
+    required int correctCount,
+    required int wrongCount,
+    required int score,
+    required int maxScore,
+    required String resultsJson,
+  }) async {
+    try {
+      final userId = await _storage.getUserId();
+      if (userId == null || userId.isEmpty) return null;
+
+      final payload = <String, dynamic>{
+        'UserId': userId,
+        'DayNumber': dayNumber,
+        'TotalQuestions': totalQuestions,
+        'CorrectCount': correctCount,
+        'WrongCount': wrongCount,
+        'Score': score,
+        'MaxScore': maxScore,
+        'ResultsJson': resultsJson,
+      };
+
+      final response = await _apiClient.post(
+        ApiConstants.dailyQuizDays,
+        data: payload,
+      );
+
+      if (response.data != null && response.data is Map) {
+        return DailyPlanDayModel.fromJson(Map<String, dynamic>.from(response.data as Map));
+      }
+      return null;
+    } catch (e) {
+      log('DailyQuizApiService.saveDayHistory Error: $e');
+      return null;
+    }
+  }
 }
+

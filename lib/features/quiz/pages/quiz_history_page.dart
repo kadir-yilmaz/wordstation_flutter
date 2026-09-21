@@ -27,9 +27,20 @@ class QuizHistoryPage extends ConsumerWidget {
     final quizNotifier = ref.read(quizControllerProvider.notifier);
     final wordListState = ref.watch(wordListControllerProvider);
 
-    final historyList = quizState.historyList
-        .where((h) => h.isDailyQuiz == isDailyQuiz)
-        .toList();
+    final historyList = isDailyQuiz
+        ? quizState.dailyPlanDays.map((d) => QuizHistoryModel(
+            id: d.id.toString(),
+            date: d.completedAt,
+            title: '${d.dayNumber}. Gün',
+            score: d.score,
+            maxScore: d.maxScore,
+            totalQuestions: d.totalQuestions,
+            correctCount: d.correctCount,
+            wrongCount: d.wrongCount,
+            isDailyQuiz: true,
+            results: d.results,
+          )).toList()
+        : quizState.historyList;
 
     return Scaffold(
       backgroundColor:

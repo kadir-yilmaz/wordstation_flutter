@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:developer' as dev;
 import 'dart:math';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -6,6 +7,7 @@ import '../../../core/storage/secure_storage_service.dart';
 import '../../auth/controllers/auth_controller.dart';
 import '../../words/controllers/word_list_controller.dart';
 import '../../words/models/word_model.dart';
+import '../models/daily_plan_day_model.dart';
 import '../models/daily_quiz_plan_model.dart';
 import '../models/quiz_history_model.dart';
 import '../models/quiz_question.dart';
@@ -24,6 +26,7 @@ class QuizState {
   final String quizTitle;
   final List<QuizQuestionResult> results;
   final List<QuizHistoryModel> historyList;
+  final List<DailyPlanDayModel> dailyPlanDays;
   final DailyQuizPlanModel? dailyPlan;
   final bool isDailyQuizCompletedToday;
   final bool hasPlanLoadError;
@@ -42,6 +45,7 @@ class QuizState {
     this.quizTitle = 'Genel Test',
     this.results = const [],
     this.historyList = const [],
+    this.dailyPlanDays = const [],
     this.dailyPlan,
     this.isDailyQuizCompletedToday = false,
     this.hasPlanLoadError = false,
@@ -75,6 +79,7 @@ class QuizState {
     String? quizTitle,
     List<QuizQuestionResult>? results,
     List<QuizHistoryModel>? historyList,
+    List<DailyPlanDayModel>? dailyPlanDays,
     DailyQuizPlanModel? dailyPlan,
     bool clearDailyPlan = false,
     bool? isDailyQuizCompletedToday,
@@ -94,6 +99,7 @@ class QuizState {
       quizTitle: quizTitle ?? this.quizTitle,
       results: results ?? this.results,
       historyList: historyList ?? this.historyList,
+      dailyPlanDays: clearDailyPlan ? const [] : (dailyPlanDays ?? this.dailyPlanDays),
       dailyPlan: clearDailyPlan ? null : (dailyPlan ?? this.dailyPlan),
       isDailyQuizCompletedToday:
           isDailyQuizCompletedToday ?? this.isDailyQuizCompletedToday,
@@ -142,7 +148,6 @@ class QuizController extends StateNotifier<QuizState> {
   final SoundService _soundService;
   final DailyQuizApiService? _apiService;
   final QuizHistoryApiService? _historyApiService;
-  final SecureStorageService? _storageService;
   final Random _random = Random();
 
   QuizController(
@@ -156,8 +161,6 @@ class QuizController extends StateNotifier<QuizState> {
         _apiService = apiService,
         // ignore: prefer_initializing_formals
         _historyApiService = historyApiService,
-        // ignore: prefer_initializing_formals
-        _storageService = storageService,
         super(QuizState.initial()) {
     _initFromCacheAndFetchCloud();
   }
@@ -169,41 +172,27 @@ class QuizController extends StateNotifier<QuizState> {
   /// 1. Anında yerel önbellekten (Cache) yükle (0ms bekleme / flicker engelleme)
   /// 2. Arka planda Cloud API ile senkronize et (SWR - Stale While Revalidate)
   Future<void> _initFromCacheAndFetchCloud() async {
-    if (_storageService != null) {
-      try {
-        final cachedPlan = await _storageService.getCachedDailyPlan();
-        if (cachedPlan != null && mounted) {
-          final todayStr = _formatTodayDate();
-          state = state.copyWith(
-            dailyPlan: cachedPlan,
-            isDailyQuizCompletedToday: cachedPlan.isCompletedToday(todayStr),
-            isPlanLoaded: true,
-          );
-        }
-      } catch (e) {
-        dev.log('QuizController._initFromCacheAndFetchCloud cache error: $e');
-      }
-    }
-
     await loadInitialData();
   }
 
-  /// Tüm veriler doğrudan API'den (Cloud) çekilir ve yerel önbellek güncellenir
+  /// Tüm veriler doğrudan API'den (Cloud DB) çekilir
   Future<void> loadInitialData() async {
     final todayStr = _formatTodayDate();
 
-    // 1. Test geçmişini API'den çek
+    // 1. Genel test geçmişini API'den çek (sadece genel quizler)
     List<QuizHistoryModel> history = [];
     if (_historyApiService != null) {
       try {
-        history = await _historyApiService.getHistory();
+        final allHistory = await _historyApiService.getHistory();
+        history = allHistory.where((h) => !h.isDailyQuiz).toList();
       } catch (e) {
         dev.log('QuizController.loadInitialData history API error: $e');
       }
     }
 
-    // 2. Günlük Quiz planını API'den çek
+    // 2. Günlük Quiz planını ve tamamlanan günleri doğrudan DB'den çek
     DailyQuizPlanModel? cloudPlan;
+    List<DailyPlanDayModel> planDays = [];
     bool isDailyDone = false;
     bool hasPlanError = false;
     String? errorMsg;
@@ -214,10 +203,7 @@ class QuizController extends StateNotifier<QuizState> {
 
         if (cloudPlan != null) {
           isDailyDone = cloudPlan.isCompletedToday(todayStr);
-          await _storageService?.saveCachedDailyPlan(cloudPlan);
-        } else {
-          // Cloud says no plan exists
-          await _storageService?.clearCachedDailyPlan();
+          planDays = await _apiService.getDayHistories();
         }
       } catch (e) {
         hasPlanError = true;
@@ -227,11 +213,14 @@ class QuizController extends StateNotifier<QuizState> {
     }
 
     if (!mounted) return;
+    final effectivePlan = _apiService != null
+        ? (cloudPlan ?? (hasPlanError ? state.dailyPlan : null))
+        : state.dailyPlan;
+
     state = state.copyWith(
       historyList: history,
-      dailyPlan: _apiService != null
-          ? (cloudPlan ?? (hasPlanError ? state.dailyPlan : null))
-          : state.dailyPlan,
+      dailyPlan: effectivePlan,
+      dailyPlanDays: effectivePlan != null ? planDays : const [],
       clearDailyPlan: _apiService != null && cloudPlan == null && !hasPlanError,
       isDailyQuizCompletedToday: cloudPlan != null ? isDailyDone : state.isDailyQuizCompletedToday,
       hasPlanLoadError: hasPlanError,
@@ -264,14 +253,12 @@ class QuizController extends StateNotifier<QuizState> {
         );
 
         if (newPlan != null) {
-          await _storageService?.saveCachedDailyPlan(newPlan);
-          await _historyApiService?.clearHistory(isDailyQuiz: true);
           state = state.copyWith(
             dailyPlan: newPlan,
+            dailyPlanDays: const [],
             isDailyQuizCompletedToday: false,
             hasPlanLoadError: false,
             errorMessage: null,
-            historyList: state.historyList.where((h) => !h.isDailyQuiz).toList(),
           );
           return true;
         }
@@ -302,10 +289,10 @@ class QuizController extends StateNotifier<QuizState> {
 
     state = state.copyWith(
       dailyPlan: fallbackPlan,
+      dailyPlanDays: const [],
       isDailyQuizCompletedToday: false,
       hasPlanLoadError: false,
       errorMessage: null,
-      historyList: state.historyList.where((h) => !h.isDailyQuiz).toList(),
     );
     return true;
   }
@@ -325,14 +312,11 @@ class QuizController extends StateNotifier<QuizState> {
       }
     }
 
-    await _historyApiService?.clearHistory(isDailyQuiz: true);
-    await _storageService?.clearCachedDailyPlan();
-
     state = state.copyWith(
       clearDailyPlan: true,
+      dailyPlanDays: const [],
       isDailyQuizCompletedToday: false,
       hasPlanLoadError: false,
-      historyList: state.historyList.where((h) => !h.isDailyQuiz).toList(),
     );
     return true;
   }
@@ -530,6 +514,87 @@ class QuizController extends StateNotifier<QuizState> {
   }
 
   Future<void> _saveCompletedQuiz() async {
+    if (state.isDailyQuiz && state.dailyPlan != null) {
+      final plan = state.dailyPlan!;
+      final todayStr = _formatTodayDate();
+      final newStreak = plan.streakDays + 1;
+      final newPointer = min(plan.currentPointer + state.totalQuestions, plan.totalWords);
+      final dayNumber = plan.currentDay;
+
+      // 1. Günlük test sonucunu doğrudan DailyPlanDayHistories tablosuna kaydet
+      if (_apiService != null) {
+        try {
+          final resultsJson = jsonEncode(state.results.map((r) => r.toJson()).toList());
+          await _apiService.saveDayHistory(
+            dayNumber: dayNumber,
+            totalQuestions: state.totalQuestions,
+            correctCount: state.correctCount,
+            wrongCount: state.wrongCount,
+            score: state.score,
+            maxScore: state.maxScore,
+            resultsJson: resultsJson,
+          );
+        } catch (e) {
+          dev.log('QuizController._saveCompletedQuiz saveDayHistory error: $e');
+        }
+      }
+
+      // 2. Günlük Quiz plan ilerlemesini DB'de güncelle
+      DailyQuizPlanModel? updatedPlan;
+      if (_apiService != null) {
+        try {
+          updatedPlan = await _apiService.updateProgress(
+            newPointer: newPointer,
+            lastCompletedDate: todayStr,
+            streakDays: newStreak,
+          );
+        } catch (e) {
+          dev.log('QuizController._saveCompletedQuiz plan progress API error: $e');
+        }
+      }
+
+      updatedPlan ??= plan.copyWith(
+        currentPointer: newPointer,
+        lastCompletedDate: todayStr,
+        streakDays: newStreak,
+      );
+
+      // 3. Güncel geçmiş günleri doğrudan DB'den çek
+      List<DailyPlanDayModel> updatedDays = state.dailyPlanDays;
+      if (_apiService != null) {
+        try {
+          final cloudDays = await _apiService.getDayHistories();
+          if (cloudDays.isNotEmpty) {
+            updatedDays = cloudDays;
+          }
+        } catch (_) {}
+      } else {
+        // Fallback for standalone mock/unit tests
+        final fallbackDay = DailyPlanDayModel(
+          id: DateTime.now().millisecondsSinceEpoch,
+          dailyQuizPlanId: int.tryParse(plan.id) ?? 0,
+          dayNumber: dayNumber,
+          completedAt: DateTime.now(),
+          totalQuestions: state.totalQuestions,
+          correctCount: state.correctCount,
+          wrongCount: state.wrongCount,
+          score: state.score,
+          maxScore: state.maxScore,
+          results: state.results,
+        );
+        updatedDays = [fallbackDay, ...state.dailyPlanDays];
+      }
+
+      if (!mounted) return;
+      state = state.copyWith(
+        dailyPlan: updatedPlan,
+        dailyPlanDays: updatedDays,
+        isDailyQuizCompletedToday: true,
+      );
+      return;
+    }
+
+    // GENEL TEST: Doğrudan QuizHistories tablosuna kaydedilir
     final historyEntry = QuizHistoryModel(
       id: DateTime.now().millisecondsSinceEpoch.toString(),
       date: DateTime.now(),
@@ -539,11 +604,10 @@ class QuizController extends StateNotifier<QuizState> {
       totalQuestions: state.totalQuestions,
       correctCount: state.correctCount,
       wrongCount: state.wrongCount,
-      isDailyQuiz: state.isDailyQuiz,
+      isDailyQuiz: false,
       results: state.results,
     );
 
-    // Save history to Cloud API
     if (_historyApiService != null) {
       try {
         await _historyApiService.saveHistory(historyEntry);
@@ -552,66 +616,19 @@ class QuizController extends StateNotifier<QuizState> {
       }
     }
 
-    DailyQuizPlanModel? updatedPlan = state.dailyPlan;
-    if (state.isDailyQuiz && state.dailyPlan != null) {
-      final plan = state.dailyPlan!;
-      final todayStr = _formatTodayDate();
-      final newStreak = plan.streakDays + 1;
-      final newPointer = min(plan.currentPointer + state.totalQuestions, plan.totalWords);
-
-      if (_apiService != null) {
-        try {
-          final cloudPlan = await _apiService.updateProgress(
-            newPointer: newPointer,
-            lastCompletedDate: todayStr,
-            streakDays: newStreak,
-          );
-          if (cloudPlan != null) {
-            updatedPlan = cloudPlan;
-          } else {
-            updatedPlan = plan.copyWith(
-              currentPointer: newPointer,
-              lastCompletedDate: todayStr,
-              streakDays: newStreak,
-            );
-          }
-        } catch (e) {
-          dev.log('QuizController._saveCompletedQuiz plan progress API error: $e');
-          updatedPlan = plan.copyWith(
-            currentPointer: newPointer,
-            lastCompletedDate: todayStr,
-            streakDays: newStreak,
-          );
-        }
-      } else {
-        updatedPlan = plan.copyWith(
-          currentPointer: newPointer,
-          lastCompletedDate: todayStr,
-          streakDays: newStreak,
-        );
-      }
-    }
-
-    // Refresh history from Cloud API
     List<QuizHistoryModel> updatedHistory = [historyEntry, ...state.historyList];
     if (_historyApiService != null) {
       try {
         final cloudHistory = await _historyApiService.getHistory();
         if (cloudHistory.isNotEmpty) {
-          updatedHistory = cloudHistory;
+          updatedHistory = cloudHistory.where((h) => !h.isDailyQuiz).toList();
         }
       } catch (_) {}
-    }
-
-    if (updatedPlan != null) {
-      await _storageService?.saveCachedDailyPlan(updatedPlan);
     }
 
     if (!mounted) return;
     state = state.copyWith(
       historyList: updatedHistory,
-      dailyPlan: updatedPlan,
-      isDailyQuizCompletedToday: state.isDailyQuiz ? true : state.isDailyQuizCompletedToday,
     );
   }
 
@@ -628,7 +645,6 @@ class QuizController extends StateNotifier<QuizState> {
   }
 
   void resetToSetup() {
-    _storageService?.clearCachedDailyPlan();
     state = state.copyWith(
       questions: [],
       currentIndex: 0,
@@ -660,20 +676,11 @@ class QuizController extends StateNotifier<QuizState> {
         dev.log('QuizController.clearGeneralHistory error: $e');
       }
     }
-    final remaining = state.historyList.where((h) => h.isDailyQuiz).toList();
-    state = state.copyWith(historyList: remaining);
+    state = state.copyWith(historyList: []);
   }
 
   Future<void> clearDailyHistory() async {
-    if (_historyApiService != null) {
-      try {
-        await _historyApiService.clearHistory(isDailyQuiz: true);
-      } catch (e) {
-        dev.log('QuizController.clearDailyHistory error: $e');
-      }
-    }
-    final remaining = state.historyList.where((h) => !h.isDailyQuiz).toList();
-    state = state.copyWith(historyList: remaining);
+    state = state.copyWith(dailyPlanDays: []);
   }
 
   Future<void> clearHistory({bool isDailyQuiz = false}) async {

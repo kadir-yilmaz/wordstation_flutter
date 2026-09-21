@@ -10,6 +10,7 @@ import 'package:wordstation_flutter/features/auth/models/login_request.dart';
 import 'package:wordstation_flutter/features/auth/models/token_response.dart';
 import 'package:wordstation_flutter/features/auth/models/user_model.dart';
 import 'package:wordstation_flutter/features/quiz/controllers/quiz_controller.dart';
+import 'package:wordstation_flutter/features/quiz/models/daily_plan_day_model.dart';
 import 'package:wordstation_flutter/features/quiz/models/daily_quiz_plan_model.dart';
 import 'package:wordstation_flutter/features/quiz/models/quiz_history_model.dart';
 import 'package:wordstation_flutter/features/quiz/pages/daily_plan_page.dart';
@@ -331,19 +332,13 @@ void main() {
     });
 
     test('Isolated general vs daily history clear', () async {
-      final sampleWords = [
-        const WordModel(id: 1, en: 'apple', tr: 'elma'),
-        const WordModel(id: 2, en: 'banana', tr: 'muz'),
-      ];
-
-      final soundService = SoundService(enableAudio: false);
       final controller = QuizController(
-        sampleWords,
-        soundService: soundService,
+        const [],
+        soundService: SoundService(enableAudio: false),
       );
 
       final generalItem = QuizHistoryModel(
-        id: '1',
+        id: 'gen_1',
         date: DateTime.now(),
         title: 'Genel Test',
         score: 10,
@@ -355,37 +350,39 @@ void main() {
         results: const [],
       );
 
-      final dailyItem = QuizHistoryModel(
-        id: '2',
-        date: DateTime.now(),
-        title: 'Günlük Test',
-        score: 10,
-        maxScore: 10,
-        totalQuestions: 1,
-        correctCount: 1,
-        wrongCount: 0,
-        isDailyQuiz: true,
+      final dailyDay = DailyPlanDayModel(
+        id: 1,
+        dailyQuizPlanId: 10,
+        dayNumber: 1,
+        completedAt: DateTime.now(),
+        totalQuestions: 10,
+        correctCount: 8,
+        wrongCount: 2,
+        score: 80,
+        maxScore: 100,
         results: const [],
       );
 
       // Seed state
       controller.state = controller.state.copyWith(
-        historyList: [generalItem, dailyItem],
+        historyList: [generalItem],
+        dailyPlanDays: [dailyDay],
       );
 
-      expect(controller.state.historyList.length, 2);
+      expect(controller.state.historyList.length, 1);
+      expect(controller.state.dailyPlanDays.length, 1);
 
       // Clear general history only
       await controller.clearGeneralHistory();
-      expect(controller.state.historyList.length, 1);
-      expect(controller.state.historyList.first.isDailyQuiz, isTrue);
+      expect(controller.state.historyList.length, 0);
+      expect(controller.state.dailyPlanDays.length, 1);
 
       // Clear daily history
       await controller.clearDailyHistory();
-      expect(controller.state.historyList.length, 0);
+      expect(controller.state.dailyPlanDays.length, 0);
     });
 
-    test('SecureStorageService caches daily plan and QuizController initializes from cache', () async {
+    test('SecureStorageService caches daily plan and clear lifecycle', () async {
       final storage = SecureStorageService();
       final plan = DailyQuizPlanModel(
         id: 'plan_123',
@@ -401,19 +398,6 @@ void main() {
       expect(cached, isNotNull);
       expect(cached!.id, 'plan_123');
       expect(cached.listName, 'B2');
-
-      // Controller initializes from cache
-      final controller = QuizController(
-        const [],
-        soundService: SoundService(enableAudio: false),
-        storageService: storage,
-      );
-
-      // Give async microtask a moment
-      await Future<void>.delayed(const Duration(milliseconds: 50));
-      expect(controller.state.dailyPlan, isNotNull);
-      expect(controller.state.dailyPlan!.id, 'plan_123');
-      expect(controller.state.isPlanLoaded, isTrue);
 
       // Clean up cache
       await storage.clearCachedDailyPlan();
@@ -616,6 +600,45 @@ void main() {
       ),
     ];
 
+    final mockDays = [
+      DailyPlanDayModel(
+        id: 1,
+        dailyQuizPlanId: 1,
+        dayNumber: 1,
+        completedAt: DateTime(2026, 9, 1),
+        score: 35,
+        maxScore: 100,
+        totalQuestions: 20,
+        correctCount: 7,
+        wrongCount: 13,
+        results: const [],
+      ),
+      DailyPlanDayModel(
+        id: 2,
+        dailyQuizPlanId: 1,
+        dayNumber: 2,
+        completedAt: DateTime(2026, 9, 2),
+        score: 90,
+        maxScore: 100,
+        totalQuestions: 20,
+        correctCount: 18,
+        wrongCount: 2,
+        results: const [],
+      ),
+      DailyPlanDayModel(
+        id: 3,
+        dailyQuizPlanId: 1,
+        dayNumber: 3,
+        completedAt: DateTime(2026, 9, 3),
+        score: 100,
+        maxScore: 100,
+        totalQuestions: 20,
+        correctCount: 20,
+        wrongCount: 0,
+        results: const [],
+      ),
+    ];
+
     final mockController = QuizController(
       const [],
       soundService: SoundService(enableAudio: false),
@@ -623,6 +646,7 @@ void main() {
     mockController.state = mockController.state.copyWith(
       isPlanLoaded: true,
       dailyPlan: samplePlan,
+      dailyPlanDays: mockDays,
       historyList: mockHistories,
     );
 

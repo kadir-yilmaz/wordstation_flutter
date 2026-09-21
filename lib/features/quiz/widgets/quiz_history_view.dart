@@ -5,6 +5,7 @@ import '../../../core/theme/app_colors.dart';
 import '../../words/controllers/word_list_controller.dart';
 import '../../words/models/word_model.dart';
 import '../controllers/quiz_controller.dart';
+import '../models/daily_plan_day_model.dart';
 import '../models/quiz_history_model.dart';
 import '../pages/quiz_history_page.dart';
 
@@ -70,9 +71,7 @@ class QuizHistoryView extends ConsumerWidget {
     final quizNotifier = ref.read(quizControllerProvider.notifier);
     final wordListState = ref.watch(wordListControllerProvider);
 
-    final historyList = quizState.historyList
-        .where((h) => h.isDailyQuiz == isDailyQuiz)
-        .toList();
+    final historyList = quizState.historyList;
 
     return RefreshIndicator(
       color: AppColors.turquoise,
@@ -85,7 +84,6 @@ class QuizHistoryView extends ConsumerWidget {
               quizState: quizState,
               quizNotifier: quizNotifier,
               wordListState: wordListState,
-              historyList: historyList,
               isDark: isDark,
             )
           : _buildGeneralQuizHistory(
@@ -106,15 +104,22 @@ class QuizHistoryView extends ConsumerWidget {
     required QuizState quizState,
     required QuizController quizNotifier,
     required WordListState wordListState,
-    required List<QuizHistoryModel> historyList,
     required bool isDark,
   }) {
-    // Kronolojik sıra (1. Gün, 2. Gün...)
-    final sortedList = historyList.toList()
-      ..sort((a, b) => a.date.compareTo(b.date));
-
     final plan = quizState.dailyPlan;
-    final totalDays = plan != null && plan.totalDays > 0
+    // Eğer plan yoksa veya silinmişse, boş durum göster
+    if (plan == null) {
+      return _buildEmptyState(isDark);
+    }
+
+    // Doğrudan DB'deki DailyPlanDayHistories tablosundan gelen günler
+    // En son gün en başa gelsin (Yeniden eskiye)
+    final sortedList = List<DailyPlanDayModel>.from(quizState.dailyPlanDays)
+      ..sort((a, b) => b.dayNumber != a.dayNumber
+          ? b.dayNumber.compareTo(a.dayNumber)
+          : b.completedAt.compareTo(a.completedAt));
+
+    final totalDays = plan.totalDays > 0
         ? plan.totalDays
         : (sortedList.isNotEmpty ? sortedList.length : 1);
     final completedDays = sortedList.length;
@@ -222,7 +227,7 @@ class QuizHistoryView extends ConsumerWidget {
           ),
         ),
 
-        // 2. Bir Satırda 3 Kare Grid
+        // 2. Bir Satırda 3 Kare Grid (En son gün en başta)
         Expanded(
           child: sortedList.isEmpty
               ? _buildEmptyState(isDark)
@@ -239,11 +244,10 @@ class QuizHistoryView extends ConsumerWidget {
                   ),
                   itemCount: sortedList.length,
                   itemBuilder: (context, index) {
-                    final entry = sortedList[index];
+                    final day = sortedList[index];
                     return _buildDailyGridCard(
                       context: context,
-                      entry: entry,
-                      index: index,
+                      day: day,
                       isDark: isDark,
                       allWords: wordListState.words,
                     );
@@ -256,23 +260,32 @@ class QuizHistoryView extends ConsumerWidget {
 
   Widget _buildDailyGridCard({
     required BuildContext context,
-    required QuizHistoryModel entry,
-    required int index,
+    required DailyPlanDayModel day,
     required bool isDark,
     required List<WordModel> allWords,
   }) {
-    final match = RegExp(r'Gün\s*(\d+)').firstMatch(entry.title);
-    final dayNum = match != null ? match.group(1) : '${index + 1}';
-    final dayTitle = '$dayNum. Gün';
-    final isSuccess = entry.percentage >= 70;
-    final isToday = _isToday(entry.date);
+    final dayTitle = '${day.dayNumber}. Gün';
+    final isSuccess = day.percentage >= 70;
+    final isToday = _isToday(day.completedAt);
 
     return MouseRegion(
       cursor: SystemMouseCursors.click,
       child: GestureDetector(
         onTap: () {
           HapticFeedback.selectionClick();
-          showQuizHistoryDetailModal(context, entry, isDark, allWords);
+          final modalEntry = QuizHistoryModel(
+            id: day.id.toString(),
+            date: day.completedAt,
+            title: dayTitle,
+            score: day.score,
+            maxScore: day.maxScore,
+            totalQuestions: day.totalQuestions,
+            correctCount: day.correctCount,
+            wrongCount: day.wrongCount,
+            isDailyQuiz: true,
+            results: day.results,
+          );
+          showQuizHistoryDetailModal(context, modalEntry, isDark, allWords);
         },
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
@@ -319,7 +332,7 @@ class QuizHistoryView extends ConsumerWidget {
                       borderRadius: BorderRadius.circular(6),
                     ),
                     child: Text(
-                      '%${entry.percentage}',
+                      '%${day.percentage}',
                       style: TextStyle(
                         fontSize: 10,
                         fontWeight: FontWeight.w800,
@@ -335,7 +348,7 @@ class QuizHistoryView extends ConsumerWidget {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Text(
-                    '${entry.correctCount}/${entry.totalQuestions}',
+                    '${day.correctCount}/${day.totalQuestions}',
                     style: const TextStyle(
                       fontSize: 15,
                       fontWeight: FontWeight.w900,
@@ -358,7 +371,7 @@ class QuizHistoryView extends ConsumerWidget {
 
               // 3. Tarih
               Text(
-                '${entry.date.day} ${_getMonthAbbr(entry.date.month)}',
+                '${day.completedAt.day} ${_getMonthAbbr(day.completedAt.month)}',
                 style: TextStyle(
                   fontSize: 10,
                   fontWeight: FontWeight.w500,
