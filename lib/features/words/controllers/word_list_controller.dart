@@ -2,8 +2,9 @@ import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../auth/controllers/auth_controller.dart';
 import '../../../core/storage/secure_storage_service.dart';
+import '../models/list_sort_order.dart';
 import '../models/word_model.dart';
-import '../services/word_service.dart';
+import '../repositories/word_repository.dart';
 
 class WordListState {
   final List<WordModel> words;
@@ -56,9 +57,12 @@ class WordListState {
 
 final wordListControllerProvider =
     StateNotifierProvider<WordListController, WordListState>((ref) {
-  final wordService = ref.watch(wordServiceProvider);
+  final wordRepository = ref.watch(wordRepositoryProvider);
   final storageService = ref.watch(secureStorageServiceProvider);
-  final controller = WordListController(wordService, storageService: storageService);
+  final controller = WordListController(
+    wordRepository,
+    storageService: storageService,
+  );
 
   ref.listen<AuthState>(authControllerProvider, (prev, next) {
     if (next.isAuthenticated && prev?.isAuthenticated != true) {
@@ -70,14 +74,14 @@ final wordListControllerProvider =
 });
 
 class WordListController extends StateNotifier<WordListState> {
-  final WordService _wordService;
+  final IWordRepository _wordRepository;
   final SecureStorageService _storageService;
   Timer? _debounceTimer;
   bool _isFetching = false;
   List<String> _customOrder = [];
 
   WordListController(
-    this._wordService, {
+    this._wordRepository, {
     SecureStorageService? storageService,
   })  : _storageService = storageService ?? SecureStorageService(),
         super(WordListState.initial()) {
@@ -134,9 +138,7 @@ class WordListController extends StateNotifier<WordListState> {
 
   Future<void> loadInitialData({bool forceRefresh = false}) async {
     if (!mounted) return;
-    // Eşzamanlı mükerrer istekleri kilit mekanizmasıyla engelle
     if (_isFetching) return;
-    // Eğer veri zaten mevcutsa ve forceRefresh değilse gereksiz yükleme yapma
     if (state.words.isNotEmpty && !forceRefresh) return;
 
     _isFetching = true;
@@ -148,8 +150,7 @@ class WordListController extends StateNotifier<WordListState> {
       if (_customOrder.isEmpty) {
         _customOrder = await _storageService.getCustomListOrder();
       }
-      // Yalnızca TEK bir optimize getWords çağrısı!
-      final words = await _wordService.getWords();
+      final words = await _wordRepository.getWords(forceRefresh: forceRefresh);
       final (listNames, counts) = _processListsAndCounts(words, _customOrder);
 
       if (!mounted) return;
@@ -164,10 +165,15 @@ class WordListController extends StateNotifier<WordListState> {
       );
     } catch (e) {
       if (!mounted) return;
-      state = state.copyWith(
-        isLoading: false,
-        errorMessage: e.toString().replaceAll('Exception: ', ''),
-      );
+      // If we already have local words, do not block UI with an error screen
+      if (state.words.isNotEmpty) {
+        state = state.copyWith(isLoading: false);
+      } else {
+        state = state.copyWith(
+          isLoading: false,
+          errorMessage: e.toString().replaceAll('Exception: ', ''),
+        );
+      }
     } finally {
       _isFetching = false;
     }
@@ -184,7 +190,7 @@ class WordListController extends StateNotifier<WordListState> {
 
     state = state.copyWith(isLoading: true, errorMessage: null);
     try {
-      await _wordService.addList(trimmed);
+      await _wordRepository.createList(trimmed);
       if (!_customOrder.contains(trimmed)) {
         _customOrder = [trimmed, ..._customOrder];
         await _storageService.saveCustomListOrder(_customOrder);
@@ -205,7 +211,7 @@ class WordListController extends StateNotifier<WordListState> {
     if (newName.trim().isEmpty || oldName == newName) return false;
     state = state.copyWith(isLoading: true, errorMessage: null);
     try {
-      await _wordService.renameList(oldName, newName.trim());
+      await _wordRepository.renameList(oldName, newName.trim());
       final idx = _customOrder.indexOf(oldName);
       if (idx != -1) {
         _customOrder[idx] = newName.trim();
@@ -226,7 +232,7 @@ class WordListController extends StateNotifier<WordListState> {
   Future<bool> deleteList(String listName) async {
     state = state.copyWith(isLoading: true, errorMessage: null);
     try {
-      await _wordService.deleteList(listName);
+      await _wordRepository.deleteList(listName);
       _customOrder.remove(listName);
       await _storageService.saveCustomListOrder(_customOrder);
       await loadInitialData(forceRefresh: true);
@@ -260,6 +266,27 @@ class WordListController extends StateNotifier<WordListState> {
     state = state.copyWith(listNames: updated);
 
     await _storageService.saveCustomListOrder(updated);
+  }
+
+  /// Listeleri belirtilen [ListSortOrder] ölçütüne göre sıralar ve kaydeder.
+  Future<void> sortLists(ListSortOrder order) async {
+    switch (order) {
+      case ListSortOrder.alphabeticalAsc:
+        await sortListsAlphabetical(ascending: true);
+        break;
+      case ListSortOrder.alphabeticalDesc:
+        await sortListsAlphabetical(ascending: false);
+        break;
+      case ListSortOrder.wordCountDesc:
+        await sortListsByWordCount(descending: true);
+        break;
+      case ListSortOrder.wordCountAsc:
+        await sortListsByWordCount(descending: false);
+        break;
+      case ListSortOrder.reset:
+        await resetListOrder();
+        break;
+    }
   }
 
   /// Listeleri alfabetik (A-Z veya Z-A) sıralar ve kaydeder.
@@ -310,7 +337,7 @@ class WordListController extends StateNotifier<WordListState> {
     );
 
     try {
-      final words = await _wordService.getWords(
+      final words = await _wordRepository.getWords(
         listName: (listName == 'Tümü' || listName == 'All') ? null : listName,
       );
       if (!mounted) return;
@@ -330,8 +357,7 @@ class WordListController extends StateNotifier<WordListState> {
     _debounceTimer?.cancel();
 
     if (query.trim().isEmpty) {
-      // Reload current list words
-      _wordService
+      _wordRepository
           .getWords(
             listName: (state.selectedListName == 'Tümü' ||
                     state.selectedListName == 'All')
@@ -354,15 +380,20 @@ class WordListController extends StateNotifier<WordListState> {
       if (!mounted) return;
       state = state.copyWith(isLoading: true, errorMessage: null);
       try {
-        final results = await _wordService.searchWords(
-          query: query,
+        final allWords = await _wordRepository.getWords(
           listName: (state.selectedListName == 'Tümü' ||
                   state.selectedListName == 'All')
               ? null
               : state.selectedListName,
         );
+        final filtered = allWords.where((w) {
+          final q = query.toLowerCase();
+          return w.en.toLowerCase().contains(q) ||
+              w.tr.toLowerCase().contains(q);
+        }).toList();
+
         if (!mounted) return;
-        state = state.copyWith(words: results, isLoading: false);
+        state = state.copyWith(words: filtered, isLoading: false);
       } catch (e) {
         if (!mounted) return;
         state = state.copyWith(
@@ -373,11 +404,15 @@ class WordListController extends StateNotifier<WordListState> {
     });
   }
 
-  Future<bool> addWord(WordModel word) async {
+  Future<WordModel?> addWord(WordModel word) async {
     try {
-      final saved = await _wordService.addWord(word);
-      if (!mounted) return true;
-      // Optimistik: Kelimeyi local state'e ekle, full reload yapma
+      final saved = await _wordRepository.createWord(
+        en: word.en,
+        tr: word.tr,
+        example: word.example,
+        listName: word.listName ?? 'General',
+      );
+      if (!mounted || saved == null) return null;
       final updatedWords = [...state.words, saved];
       final (listNames, counts) =
           _processListsAndCounts(updatedWords, _customOrder);
@@ -386,21 +421,26 @@ class WordListController extends StateNotifier<WordListState> {
         listNames: listNames,
         wordCountsByList: counts,
       );
-      return true;
+      return saved;
     } catch (e) {
-      if (!mounted) return false;
+      if (!mounted) return null;
       state = state.copyWith(
         errorMessage: e.toString().replaceAll('Exception: ', ''),
       );
-      return false;
+      return null;
     }
   }
 
-  Future<bool> updateWord(WordModel word) async {
+  Future<WordModel?> updateWord(WordModel word) async {
     try {
-      final saved = await _wordService.updateWord(word);
-      if (!mounted) return true;
-      // Optimistik: Kelimeyi local state'de güncelle, full reload yapma
+      final saved = await _wordRepository.updateWord(
+        id: word.id,
+        en: word.en,
+        tr: word.tr,
+        example: word.example,
+        listName: word.listName ?? 'General',
+      );
+      if (!mounted || saved == null) return null;
       final updatedWords = state.words.map((w) {
         if (w.id == saved.id) return saved;
         return w;
@@ -412,21 +452,21 @@ class WordListController extends StateNotifier<WordListState> {
         listNames: listNames,
         wordCountsByList: counts,
       );
-      return true;
+      return saved;
     } catch (e) {
-      if (!mounted) return false;
+      if (!mounted) return null;
       state = state.copyWith(
         errorMessage: e.toString().replaceAll('Exception: ', ''),
       );
-      return false;
+      return null;
     }
   }
 
   Future<bool> deleteWord(dynamic id) async {
     try {
-      await _wordService.deleteWord(id);
+      final intId = id is int ? id : int.tryParse(id.toString()) ?? 0;
+      await _wordRepository.deleteWord(intId);
       if (!mounted) return true;
-      // Optimistik: Kelimeyi local state'den çıkar, full reload yapma
       final updatedWords = state.words.where((w) => w.id != id).toList();
       final (listNames, counts) =
           _processListsAndCounts(updatedWords, _customOrder);

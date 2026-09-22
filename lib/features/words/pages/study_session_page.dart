@@ -19,6 +19,7 @@ import '../widgets/study/study_synonyms_bar.dart';
 import '../widgets/study/study_word_card.dart';
 
 class StudySessionPage extends ConsumerStatefulWidget {
+  final String sessionId;
   final List<WordModel> words;
   final int initialIndex;
   final String? listTitle;
@@ -27,6 +28,7 @@ class StudySessionPage extends ConsumerStatefulWidget {
 
   const StudySessionPage({
     super.key,
+    this.sessionId = 'default_study_session',
     required this.words,
     this.initialIndex = 0,
     this.listTitle,
@@ -52,6 +54,16 @@ class _StudySessionPageState extends ConsumerState<StudySessionPage>
   final ScrollController _desktopSynonymsScrollController = ScrollController();
   final ScrollController _mobileSynonymsScrollController = ScrollController();
 
+  StudySessionArgs get _sessionArgs {
+    final allWords = ref.read(wordListControllerProvider).words;
+    return StudySessionArgs(
+      sessionId: widget.sessionId,
+      words: widget.words,
+      initialIndex: widget.initialIndex,
+      allVocabularyWords: allWords.isNotEmpty ? allWords : widget.words,
+    );
+  }
+
   @override
   void initState() {
     super.initState();
@@ -68,14 +80,28 @@ class _StudySessionPageState extends ConsumerState<StudySessionPage>
     );
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      final allWords = ref.read(wordListControllerProvider).words;
-      ref.read(studyControllerProvider.notifier).initWithWords(
-            widget.words,
-            initialIndex: widget.initialIndex,
-            allVocabularyWords: allWords.isNotEmpty ? allWords : widget.words,
-          );
-      _pageFocusNode.requestFocus();
+      if (mounted) {
+        _pageFocusNode.requestFocus();
+      }
     });
+  }
+
+  @override
+  void didUpdateWidget(covariant StudySessionPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.sessionId != widget.sessionId ||
+        oldWidget.words != widget.words ||
+        oldWidget.initialIndex != widget.initialIndex) {
+      Future.microtask(() {
+        if (!mounted) return;
+        final allWords = ref.read(wordListControllerProvider).words;
+        ref.read(studyControllerProvider(_sessionArgs).notifier).initWithWords(
+              widget.words,
+              initialIndex: widget.initialIndex,
+              allVocabularyWords: allWords.isNotEmpty ? allWords : widget.words,
+            );
+      });
+    }
   }
 
   @override
@@ -124,8 +150,8 @@ class _StudySessionPageState extends ConsumerState<StudySessionPage>
       return KeyEventResult.ignored;
     }
 
-    final studyState = ref.read(studyControllerProvider);
-    final studyNotifier = ref.read(studyControllerProvider.notifier);
+    final studyState = ref.read(studyControllerProvider(_sessionArgs));
+    final studyNotifier = ref.read(studyControllerProvider(_sessionArgs).notifier);
     final hasWords = studyState.words.isNotEmpty;
     final currentIndex = studyState.currentIndex;
     final totalCount = studyState.totalCount;
@@ -194,7 +220,7 @@ class _StudySessionPageState extends ConsumerState<StudySessionPage>
   }
 
   Future<void> _handleAddWord() async {
-    final studyNotifier = ref.read(studyControllerProvider.notifier);
+    final studyNotifier = ref.read(studyControllerProvider(_sessionArgs).notifier);
     final result = await context.push<WordModel>(AppRoutes.addWord, extra: {
       'initialListName': widget.listTitle != 'All' ? widget.listTitle : null,
     });
@@ -210,7 +236,7 @@ class _StudySessionPageState extends ConsumerState<StudySessionPage>
     if (_isNavigating) return;
     _isNavigating = true;
     try {
-      final studyNotifier = ref.read(studyControllerProvider.notifier);
+      final studyNotifier = ref.read(studyControllerProvider(_sessionArgs).notifier);
       final updated = await context.push<WordModel>(AppRoutes.addWord, extra: {
         'wordToEdit': currentWord,
       });
@@ -253,7 +279,7 @@ class _StudySessionPageState extends ConsumerState<StudySessionPage>
     );
 
     if (confirmed == true && mounted) {
-      final studyNotifier = ref.read(studyControllerProvider.notifier);
+      final studyNotifier = ref.read(studyControllerProvider(_sessionArgs).notifier);
 
       if (word.id != null) {
         final success = await ref
@@ -282,7 +308,7 @@ class _StudySessionPageState extends ConsumerState<StudySessionPage>
       // Index korunur, arama korunur, liste boşsa sayfadan çık
       studyNotifier.removeWord(word.id);
 
-      final studyState = ref.read(studyControllerProvider);
+      final studyState = ref.read(studyControllerProvider(_sessionArgs));
       if (studyState.words.isEmpty) {
         context.pop();
       }
@@ -291,12 +317,12 @@ class _StudySessionPageState extends ConsumerState<StudySessionPage>
 
   @override
   Widget build(BuildContext context) {
-    final studyState = ref.watch(studyControllerProvider);
-    final studyNotifier = ref.read(studyControllerProvider.notifier);
+    final studyState = ref.watch(studyControllerProvider(_sessionArgs));
+    final studyNotifier = ref.read(studyControllerProvider(_sessionArgs).notifier);
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     // Listen to flip state and index changes
-    ref.listen<StudyState>(studyControllerProvider, (prev, next) {
+    ref.listen<StudyState>(studyControllerProvider(_sessionArgs), (prev, next) {
       if (prev?.isFlipped != next.isFlipped) {
         _handleFlip(next.isFlipped);
       }

@@ -4,8 +4,10 @@
 
 list(APPEND FLUTTER_PLUGIN_LIST
   audioplayers_windows
+  connectivity_plus
   flutter_secure_storage_windows
   flutter_tts
+  sqlite3_flutter_libs
   url_launcher_windows
 )
 

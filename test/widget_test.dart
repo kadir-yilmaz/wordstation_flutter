@@ -17,15 +17,16 @@ import 'package:wordstation_flutter/features/quiz/pages/daily_plan_page.dart';
 import 'package:wordstation_flutter/features/quiz/pages/quiz_history_page.dart';
 import 'package:wordstation_flutter/features/quiz/widgets/quiz_history_view.dart';
 import 'package:wordstation_flutter/features/quiz/pages/quiz_page.dart';
-import 'package:dio/dio.dart';
-import 'package:wordstation_flutter/core/network/api_client.dart';
 import 'package:wordstation_flutter/features/words/controllers/study_controller.dart';
 import 'package:wordstation_flutter/features/words/controllers/word_list_controller.dart';
 import 'package:wordstation_flutter/features/words/models/synonym_group_model.dart';
 import 'package:wordstation_flutter/features/words/models/word_model.dart';
 import 'package:wordstation_flutter/features/words/pages/study_session_page.dart';
 import 'package:wordstation_flutter/features/words/pages/words_list_page.dart';
-import 'package:wordstation_flutter/features/words/services/word_service.dart';
+import 'package:drift/drift.dart' as drift;
+import 'package:drift/native.dart';
+import 'package:wordstation_flutter/core/database/app_database.dart';
+import 'package:wordstation_flutter/features/words/repositories/word_repository.dart';
 import 'package:wordstation_flutter/features/navigation/main_navigation_page.dart';
 import 'package:go_router/go_router.dart';
 import 'package:wordstation_flutter/main.dart';
@@ -33,6 +34,7 @@ import 'package:wordstation_flutter/main.dart';
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   FlutterSecureStorage.setMockInitialValues({});
+  drift.driftRuntimeOptions.dontWarnAboutMultipleDatabases = true;
 
   group('Models Unit Tests', () {
     test('WordModel serialization and deserialization', () {
@@ -511,6 +513,100 @@ void main() {
     await tester.pumpAndSettle();
   });
 
+  testWidgets('Multiple StudySessionPage instances with different sessionIds are isolated and do not contaminate each other', (WidgetTester tester) async {
+    const planWord = WordModel(id: 101, en: 'planWord', tr: 'planKelimesi', listName: 'Plan');
+    const listWord = WordModel(id: 202, en: 'listWord', tr: 'listeKelimesi', listName: 'Meyveler');
+
+    await tester.pumpWidget(
+      const ProviderScope(
+        child: MaterialApp(
+          home: Scaffold(
+            body: IndexedStack(
+              index: 0,
+              children: [
+                StudySessionPage(
+                  sessionId: 'daily_plan_study',
+                  words: [planWord],
+                  listTitle: 'Günün Kelimeleri',
+                ),
+                StudySessionPage(
+                  sessionId: 'words_list_study_Meyveler',
+                  words: [listWord],
+                  listTitle: 'Meyveler',
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // Verify Tab 0 (Plan) displays planWord
+    expect(find.text('planWord'), findsOneWidget);
+    expect(find.text('Günün Kelimeleri'), findsOneWidget);
+
+    // Switch IndexedStack to Tab 1 (Word List Study)
+    await tester.pumpWidget(
+      const ProviderScope(
+        child: MaterialApp(
+          home: Scaffold(
+            body: IndexedStack(
+              index: 1,
+              children: [
+                StudySessionPage(
+                  sessionId: 'daily_plan_study',
+                  words: [planWord],
+                  listTitle: 'Günün Kelimeleri',
+                ),
+                StudySessionPage(
+                  sessionId: 'words_list_study_Meyveler',
+                  words: [listWord],
+                  listTitle: 'Meyveler',
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // Verify Tab 1 displays listWord and its title
+    expect(find.text('listWord'), findsOneWidget);
+    expect(find.text('Meyveler'), findsOneWidget);
+
+    // Switch back to Tab 0 (Plan)
+    await tester.pumpWidget(
+      const ProviderScope(
+        child: MaterialApp(
+          home: Scaffold(
+            body: IndexedStack(
+              index: 0,
+              children: [
+                StudySessionPage(
+                  sessionId: 'daily_plan_study',
+                  words: [planWord],
+                  listTitle: 'Günün Kelimeleri',
+                ),
+                StudySessionPage(
+                  sessionId: 'words_list_study_Meyveler',
+                  words: [listWord],
+                  listTitle: 'Meyveler',
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // Verify Tab 0 STILL displays planWord and was not contaminated!
+    expect(find.text('planWord'), findsOneWidget);
+    expect(find.text('Günün Kelimeleri'), findsOneWidget);
+  });
+
   testWidgets('QuizPage renders 2 top tabs (Quiz Yap & Geçmiş Sonuçlar)', (WidgetTester tester) async {
     await tester.pumpWidget(
       ProviderScope(
@@ -886,13 +982,32 @@ void main() {
       dailyPlan: samplePlan,
     );
 
+    final router = GoRouter(
+      initialLocation: '/plan',
+      routes: [
+        GoRoute(
+          path: '/plan',
+          builder: (context, state) => const DailyPlanPage(),
+          routes: [
+            GoRoute(
+              path: 'history',
+              builder: (context, state) => const QuizHistoryPage(
+                isDailyQuiz: true,
+                title: 'Geçmiş Günler',
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
           quizControllerProvider.overrideWith((ref) => mockController),
         ],
-        child: const MaterialApp(
-          home: DailyPlanPage(),
+        child: MaterialApp.router(
+          routerConfig: router,
         ),
       ),
     );
@@ -906,7 +1021,7 @@ void main() {
 
     expect(find.text('Geçmiş Günler'), findsOneWidget);
 
-    // Tap back button in header
+    // Tap standard back button in AppBar
     await tester.tap(find.byIcon(Icons.arrow_back_ios_new_rounded));
     await tester.pumpAndSettle();
 
@@ -1027,8 +1142,7 @@ void main() {
     // Initial frame loads WordStationApp with MaterialApp.router
     expect(find.byType(WordStationApp), findsOneWidget);
 
-    // After auth resolution and router redirect settles
-    await tester.pumpAndSettle();
+    await tester.pump(const Duration(milliseconds: 300));
     expect(find.byType(WordStationApp), findsOneWidget);
   });
 
@@ -1056,8 +1170,8 @@ void main() {
         const WordModel(id: 2, en: 'ubiquitous', tr: 'yaygın', listName: 'YDS'),
         const WordModel(id: 3, en: 'elaborate', tr: 'ayrıntılı', listName: 'B2'),
       ];
-      final wordService = MockWordService(mockWords);
-      final controller = WordListController(wordService, storageService: storage);
+      final wordRepo = MockWordRepository(mockWords);
+      final controller = WordListController(wordRepo, storageService: storage);
 
       // Wait for loadInitialData
       await Future<void>.delayed(const Duration(milliseconds: 50));
@@ -1079,13 +1193,13 @@ void main() {
         const WordModel(id: 1, en: 'apple', tr: 'elma', listName: 'General'),
         const WordModel(id: 2, en: 'ubiquitous', tr: 'yaygın', listName: 'YDS'),
       ];
-      final wordService = MockWordService(mockWords);
+      final wordRepo = MockWordRepository(mockWords);
 
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
             wordListControllerProvider.overrideWith(
-              (ref) => WordListController(wordService, storageService: SecureStorageService()),
+              (ref) => WordListController(wordRepo, storageService: SecureStorageService()),
             ),
           ],
           child: const MaterialApp(
@@ -1101,19 +1215,210 @@ void main() {
       expect(find.byIcon(Icons.swap_vert_rounded), findsOneWidget);
     });
   });
+
+  group('Drift SQLite In-Memory Database Tests', () {
+    late AppDatabase db;
+
+    setUp(() {
+      db = AppDatabase(NativeDatabase.memory());
+    });
+
+    tearDown(() async {
+      await db.close();
+    });
+
+    test('Upsert, retrieve, update, and delete words locally', () async {
+      const companion1 = WordsTableCompanion(
+        id: drift.Value(1),
+        en: drift.Value('ephemeral'),
+        tr: drift.Value('geçici'),
+        example: drift.Value('Beauty is ephemeral.'),
+        listName: drift.Value('Advanced'),
+        isSynced: drift.Value(true),
+      );
+
+      const companion2 = WordsTableCompanion(
+        id: drift.Value(2),
+        en: drift.Value('ubiquitous'),
+        tr: drift.Value('yaygın'),
+        listName: drift.Value('Advanced'),
+        isSynced: drift.Value(true),
+      );
+
+      await db.upsertWords([companion1, companion2]);
+
+      final allWords = await db.getAllWords();
+      expect(allWords.length, 2);
+      expect(allWords.first.en, 'ephemeral');
+
+      // Update
+      await db.renameListLocally('Advanced', 'Master');
+      final masterWords = await db.getWordsByList('Master');
+      expect(masterWords.length, 2);
+
+      // Delete
+      await db.deleteWordById(1);
+      final remaining = await db.getAllWords();
+      expect(remaining.length, 1);
+      expect(remaining.first.id, 2);
+    });
+
+    test('Daily plan and sync queue persistence', () async {
+      const planCompanion = DailyPlansTableCompanion(
+        id: drift.Value('plan_1'),
+        listName: drift.Value('YDS'),
+        dailyCount: drift.Value(10),
+        shuffledWordIdsJson: drift.Value('[1,2,3,4,5]'),
+        currentPointer: drift.Value(0),
+        streakDays: drift.Value(1),
+        isActive: drift.Value(true),
+        isSynced: drift.Value(false),
+      );
+
+      await db.upsertDailyPlan(planCompanion);
+      final activePlan = await db.getActiveDailyPlan();
+      expect(activePlan, isNotNull);
+      expect(activePlan!.listName, 'YDS');
+      expect(activePlan.isSynced, isFalse);
+
+      // Sync queue
+      final queueId = await db.addToSyncQueue('submit_daily_quiz', '{"score":100}');
+      final pending = await db.getPendingSyncItems();
+      expect(pending.length, 1);
+      expect(pending.first.actionType, 'submit_daily_quiz');
+
+      await db.removeSyncQueueItem(queueId);
+      final emptyQueue = await db.getPendingSyncItems();
+      expect(emptyQueue, isEmpty);
+    });
+
+    test('Temporary ID replacement and queue ID translation', () async {
+      const tempId = 999999;
+      const tempCompanion = WordsTableCompanion(
+        id: drift.Value(tempId),
+        en: drift.Value('serendipity'),
+        tr: drift.Value('tatlı tesadüf'),
+        listName: drift.Value('Advanced'),
+        isSynced: drift.Value(false),
+      );
+
+      await db.upsertWord(tempCompanion);
+      var words = await db.getAllWords();
+      expect(words.length, 1);
+      expect(words.first.id, tempId);
+      expect(words.first.isSynced, isFalse);
+
+      // Chained edit in queue with tempId
+      final queueId = await db.addToSyncQueue(
+        'edit_word',
+        '{"id":$tempId,"en":"serendipity","tr":"şans eseri güzel buluş","listName":"Advanced"}',
+      );
+
+      // Backend sync returned real ID = 1042
+      const realId = 1042;
+      const realCompanion = WordsTableCompanion(
+        id: drift.Value(realId),
+        en: drift.Value('serendipity'),
+        tr: drift.Value('tatlı tesadüf'),
+        listName: drift.Value('Advanced'),
+        isSynced: drift.Value(true),
+      );
+
+      await db.replaceTempWord(tempId, realCompanion);
+
+      // Verify temp record deleted, real record inserted (NO duplicates!)
+      words = await db.getAllWords();
+      expect(words.length, 1);
+      expect(words.first.id, realId);
+      expect(words.first.isSynced, isTrue);
+
+      // ID translation on queue
+      await db.updateSyncQueuePayload(
+        queueId,
+        '{"id":$realId,"en":"serendipity","tr":"şans eseri güzel buluş","listName":"Advanced"}',
+      );
+
+      final pending = await db.getPendingSyncItems();
+      expect(pending.first.payloadJson.contains('"id":1042'), isTrue);
+      expect(pending.first.payloadJson.contains('999999'), isFalse);
+    });
+  });
 }
 
-class MockWordService extends WordService {
+class MockWordRepository implements IWordRepository {
   final List<WordModel> mockWords;
-  MockWordService(this.mockWords)
-      : super(ApiClient(Dio()), SecureStorageService());
+  MockWordRepository(this.mockWords);
 
   @override
-  Future<List<WordModel>> getWords({String? listName}) async {
+  Future<List<WordModel>> getWords({String? listName, bool forceRefresh = false}) async {
     if (listName != null) {
       return mockWords.where((w) => w.listName == listName).toList();
     }
     return mockWords;
+  }
+
+  @override
+  Stream<List<WordModel>> watchWords({String? listName}) async* {
+    yield await getWords(listName: listName);
+  }
+
+  @override
+  Future<WordModel?> createWord({
+    required String en,
+    required String tr,
+    String? example,
+    required String listName,
+  }) async {
+    final newWord = WordModel(
+      id: mockWords.length + 1,
+      en: en,
+      tr: tr,
+      example: example,
+      listName: listName,
+    );
+    mockWords.add(newWord);
+    return newWord;
+  }
+
+  @override
+  Future<WordModel?> updateWord({
+    required int id,
+    required String en,
+    required String tr,
+    String? example,
+    required String listName,
+  }) async {
+    final idx = mockWords.indexWhere((w) => w.id == id);
+    if (idx != -1) {
+      final updated = WordModel(
+        id: id,
+        en: en,
+        tr: tr,
+        example: example,
+        listName: listName,
+      );
+      mockWords[idx] = updated;
+      return updated;
+    }
+    return null;
+  }
+
+  @override
+  Future<bool> deleteWord(int id) async {
+    mockWords.removeWhere((w) => w.id == id);
+    return true;
+  }
+
+  @override
+  Future<bool> createList(String listName) async => true;
+
+  @override
+  Future<bool> renameList(String oldName, String newName) async => true;
+
+  @override
+  Future<bool> deleteList(String listName) async {
+    mockWords.removeWhere((w) => w.listName == listName);
+    return true;
   }
 }
 

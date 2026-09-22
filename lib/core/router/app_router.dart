@@ -34,10 +34,18 @@ final branchNavKeys = [
 
 Widget _buildStudySessionPage(GoRouterState state) {
   final extra = state.extra as Map<String, dynamic>? ?? {};
+  final listTitle = extra['listTitle'] as String?;
+  final routePath = state.matchedLocation;
+  final customSessionId = extra['sessionId'] as String?;
+  final sessionId = customSessionId ??
+      '${routePath}_${state.pageKey.value}_${listTitle ?? 'study'}';
+
   return StudySessionPage(
+    key: ValueKey(sessionId),
+    sessionId: sessionId,
     words: (extra['words'] as List<WordModel>?) ?? [],
     initialIndex: (extra['initialIndex'] as int?) ?? 0,
-    listTitle: extra['listTitle'] as String?,
+    listTitle: listTitle,
     showSearchBar: (extra['showSearchBar'] as bool?) ?? true,
     isReadOnly: (extra['isReadOnly'] as bool?) ?? false,
   );
@@ -109,11 +117,6 @@ final routerProvider = Provider<GoRouter>((ref) {
                   ),
                 ],
               ),
-              // Geriye dönük uyumluluk: doğrudan /study çağrılırsa da Tab 0 içinde tabbar ile açılır
-              GoRoute(
-                path: AppRoutes.study,
-                builder: (context, state) => _buildStudySessionPage(state),
-              ),
             ],
           ),
           // Tab 1: Synonyms
@@ -170,6 +173,16 @@ final routerProvider = Provider<GoRouter>((ref) {
                     path: 'study',
                     builder: (context, state) => _buildStudySessionPage(state),
                   ),
+                  GoRoute(
+                    path: 'history',
+                    builder: (context, state) {
+                      final extra = state.extra as Map<String, dynamic>? ?? {};
+                      return QuizHistoryPage(
+                        isDailyQuiz: true,
+                        title: (extra['title'] as String?) ?? 'Geçmiş Günler',
+                      );
+                    },
+                  ),
                 ],
               ),
             ],
@@ -200,17 +213,6 @@ final routerProvider = Provider<GoRouter>((ref) {
         },
       ),
 
-      // QuizHistoryPage
-      GoRoute(
-        path: AppRoutes.quizHistory,
-        builder: (context, state) {
-          final extra = state.extra as Map<String, dynamic>? ?? {};
-          return QuizHistoryPage(
-            isDailyQuiz: (extra['isDailyQuiz'] as bool?) ?? false,
-            title: (extra['title'] as String?) ?? 'Test Geçmişi',
-          );
-        },
-      ),
 
       // TokenInspectorPage
       GoRoute(

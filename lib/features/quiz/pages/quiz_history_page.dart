@@ -312,6 +312,7 @@ class QuizHistoryPage extends ConsumerWidget {
                   HapticFeedback.selectionClick();
                   final words = entry.results.map((r) => r.word).toList();
                   context.push(AppRoutes.quizStudy, extra: {
+                    'sessionId': 'quiz_history_study_${entry.id}',
                     'words': words,
                     'listTitle': entry.title,
                     'showSearchBar': false,
@@ -453,6 +454,7 @@ void showQuizHistoryDetailModal(
                           Navigator.of(ctx).pop();
                           final words = entry.results.map((r) => r.word).toList();
                           context.push(AppRoutes.quizStudy, extra: {
+                            'sessionId': 'quiz_history_study_${entry.id}',
                             'words': words,
                             'listTitle': entry.title,
                             'showSearchBar': false,

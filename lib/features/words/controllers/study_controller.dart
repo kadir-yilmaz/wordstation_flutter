@@ -64,11 +64,42 @@ class StudyState {
   }
 }
 
-final studyControllerProvider =
-    StateNotifierProvider.autoDispose<StudyController, StudyState>((ref) {
-  final tts = ref.watch(ttsServiceProvider);
-  return StudyController(tts);
-});
+class StudySessionArgs {
+  final String sessionId;
+  final List<WordModel> words;
+  final int initialIndex;
+  final List<WordModel> allVocabularyWords;
+
+  const StudySessionArgs({
+    required this.sessionId,
+    required this.words,
+    this.initialIndex = 0,
+    this.allVocabularyWords = const [],
+  });
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is StudySessionArgs &&
+          runtimeType == other.runtimeType &&
+          sessionId == other.sessionId;
+
+  @override
+  int get hashCode => sessionId.hashCode;
+}
+
+final studyControllerProvider = StateNotifierProvider.autoDispose
+    .family<StudyController, StudyState, StudySessionArgs>(
+  (ref, args) {
+    final tts = ref.watch(ttsServiceProvider);
+    return StudyController(
+      tts,
+      initialWords: args.words,
+      initialIndex: args.initialIndex,
+      allVocabularyWords: args.allVocabularyWords,
+    );
+  },
+);
 
 class StudyController extends StateNotifier<StudyState> {
   final TtsService _tts;
@@ -88,7 +119,20 @@ class StudyController extends StateNotifier<StudyState> {
     [Color(0xFFF59E0B), Color(0xFFD97706)], // Meaning 6: Amber
   ];
 
-  StudyController(this._tts) : super(StudyState.empty());
+  StudyController(
+    this._tts, {
+    List<WordModel> initialWords = const [],
+    int initialIndex = 0,
+    List<WordModel>? allVocabularyWords,
+  }) : super(StudyState.empty()) {
+    if (initialWords.isNotEmpty) {
+      initWithWords(
+        initialWords,
+        initialIndex: initialIndex,
+        allVocabularyWords: allVocabularyWords,
+      );
+    }
+  }
 
   void _buildIndex(List<WordModel> words) {
     _meaningIndex.clear();
@@ -371,11 +415,19 @@ class StudyController extends StateNotifier<StudyState> {
     // 1. Master listeye ekle
     _allWords.add(word);
 
-    // 2. Synonym index'ini yeniden oluştur
+    // 2. Şu anki kelime listesine de anında ekle
+    final currentWords = [...state.words, word];
+
+    // 3. Index belirle (eğer liste boş idiyse 0 yap)
+    final newIndex = state.words.isEmpty ? 0 : state.currentIndex;
+
+    // 4. Synonym index'ini yeniden oluştur
     _buildIndex(_allWords);
-    final badges = _findSynonymBadges(state.words, state.currentIndex);
+    final badges = _findSynonymBadges(currentWords, newIndex);
 
     state = state.copyWith(
+      words: currentWords,
+      currentIndex: newIndex,
       synonymBadges: badges,
     );
   }

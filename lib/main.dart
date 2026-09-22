@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_web_plugins/url_strategy.dart';
 import 'core/router/app_router.dart';
+import 'core/sync/sync_manager.dart';
 import 'core/theme/app_theme.dart';
 import 'core/theme/theme_controller.dart';
 
@@ -43,6 +44,8 @@ class WordStationApp extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    // Eagerly initialize sync manager for connectivity listening
+    ref.watch(syncManagerProvider);
     final themeMode = ref.watch(themeControllerProvider);
     final router = ref.watch(routerProvider);
 

@@ -71,20 +71,20 @@ class _AddEditWordPageState extends ConsumerState<AddEditWordPage> {
       userId: widget.wordToEdit?.userId,
     );
 
-    bool success;
+    WordModel? savedResult;
     if (_isEditing) {
-      success =
+      savedResult =
           await ref.read(wordListControllerProvider.notifier).updateWord(word);
     } else {
-      success =
+      savedResult =
           await ref.read(wordListControllerProvider.notifier).addWord(word);
     }
 
     setState(() => _isLoading = false);
 
-    if (success && mounted) {
-      context.pop(word);
-    } else if (!success && mounted) {
+    if (savedResult != null && mounted) {
+      context.pop(savedResult);
+    } else if (savedResult == null && mounted) {
       final err = ref.read(wordListControllerProvider).errorMessage;
       if (err != null && DioErrorHandler.isNetworkError(err)) {
         NoInternetDialog.show(
@@ -97,8 +97,8 @@ class _AddEditWordPageState extends ConsumerState<AddEditWordPage> {
                 : await ref
                     .read(wordListControllerProvider.notifier)
                     .addWord(word);
-            if (ok && mounted) {
-              context.pop(word);
+            if (ok != null && mounted) {
+              context.pop(ok);
             } else {
               throw Exception('Retry failed');
             }

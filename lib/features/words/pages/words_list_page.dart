@@ -3,14 +3,16 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import '../../../core/network/dio_error_handler.dart';
+import '../../../core/router/app_routes.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/widgets/custom_button.dart';
 import '../../../core/widgets/network_error_view.dart';
-import '../../../core/widgets/no_internet_dialog.dart';
+import '../../../core/widgets/offline_status_badge.dart';
 import '../../../core/widgets/responsive_layout.dart';
-import '../../../core/router/app_routes.dart';
 import '../controllers/word_list_controller.dart';
+import '../models/list_sort_order.dart';
+import '../widgets/word_list_card.dart';
+import '../widgets/word_list_dialogs.dart';
 
 class WordsListPage extends ConsumerStatefulWidget {
   const WordsListPage({super.key});
@@ -21,10 +23,9 @@ class WordsListPage extends ConsumerStatefulWidget {
 
 class _WordsListPageState extends ConsumerState<WordsListPage> {
   bool _isNavigating = false;
-  bool _isDialogOpen = false;
 
   // Gradient pairs matching Swift HomeTVC
-  final List<List<Color>> _listGradients = const [
+  static const List<List<Color>> _listGradients = [
     [Color(0xFFFF2D55), Color(0xFFAF52DE)], // Pink -> Purple
     [Color(0xFF007AFF), Color(0xFF5AC8FA)], // Blue -> Teal
     [Color(0xFF34C759), Color(0xFF00C7BE)], // Green -> Mint
@@ -45,237 +46,19 @@ class _WordsListPageState extends ConsumerState<WordsListPage> {
     });
   }
 
-  void _showAddListDialog() {
-    if (_isDialogOpen) return;
-    _isDialogOpen = true;
-
-    final textController = TextEditingController();
-    showDialog(
-      context: context,
-      builder: (ctx) {
-        return AlertDialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(20),
-          ),
-          title: const Text(
-            'New List',
-            style: TextStyle(fontWeight: FontWeight.w700),
-          ),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Text(
-                'Please enter a name for your new word list.',
-                style: TextStyle(fontSize: 13, color: Colors.grey),
-              ),
-              const SizedBox(height: 16),
-              TextField(
-                controller: textController,
-                autofocus: true,
-                decoration: InputDecoration(
-                  hintText: 'Name (e.g. YDS, TOEFL, A1)',
-                  filled: true,
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide.none,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(ctx).pop(),
-              child: const Text('Cancel'),
-            ),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.turquoise,
-                foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-              ),
-              onPressed: () async {
-                final text = textController.text.trim();
-                if (text.isNotEmpty) {
-                  Navigator.of(ctx).pop();
-                  final success = await ref
-                      .read(wordListControllerProvider.notifier)
-                      .createList(text);
-                  if (!success && mounted) {
-                    final err =
-                        ref.read(wordListControllerProvider).errorMessage;
-                    if (err != null && DioErrorHandler.isNetworkError(err)) {
-                      NoInternetDialog.show(
-                        context,
-                        onRetry: () async {
-                          final ok = await ref
-                              .read(wordListControllerProvider.notifier)
-                              .createList(text);
-                          if (!ok) throw Exception('Failed');
-                        },
-                      );
-                    }
-                  }
-                }
-              },
-              child: const Text('Save'),
-            ),
-          ],
-        );
-      },
-    ).then((_) {
-      textController.dispose();
-      if (mounted) _isDialogOpen = false;
-    });
-  }
-
-  void _showRenameDialog(String oldName) {
-    if (_isDialogOpen) return;
-    _isDialogOpen = true;
-
-    final textController = TextEditingController(text: oldName);
-    showDialog(
-      context: context,
-      builder: (ctx) {
-        return AlertDialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(20),
-          ),
-          title: const Text('Rename List'),
-          content: TextField(
-            controller: textController,
-            autofocus: true,
-            decoration: InputDecoration(
-              hintText: 'New List Name',
-              filled: true,
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-                borderSide: BorderSide.none,
-              ),
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(ctx).pop(),
-              child: const Text('Cancel'),
-            ),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.blue,
-                foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-              ),
-              onPressed: () async {
-                final newName = textController.text.trim();
-                if (newName.isNotEmpty) {
-                  Navigator.of(ctx).pop();
-                  final success = await ref
-                      .read(wordListControllerProvider.notifier)
-                      .renameList(oldName, newName);
-                  if (!success && mounted) {
-                    final err =
-                        ref.read(wordListControllerProvider).errorMessage;
-                    if (err != null && DioErrorHandler.isNetworkError(err)) {
-                      NoInternetDialog.show(
-                        context,
-                        onRetry: () async {
-                          final ok = await ref
-                              .read(wordListControllerProvider.notifier)
-                              .renameList(oldName, newName);
-                          if (!ok) throw Exception('Failed');
-                        },
-                      );
-                    }
-                  }
-                }
-              },
-              child: const Text('Rename'),
-            ),
-          ],
-        );
-      },
-    ).then((_) {
-      textController.dispose();
-      if (mounted) _isDialogOpen = false;
-    });
-  }
-
-  void _showDeleteDialog(String listName) {
-    if (_isDialogOpen) return;
-    _isDialogOpen = true;
-
-    showDialog(
-      context: context,
-      builder: (ctx) {
-        return AlertDialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(20),
-          ),
-          title: const Text('Delete List'),
-          content: Text(
-            "'$listName' will be permanently deleted. Are you sure?",
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(ctx).pop(),
-              child: const Text('Cancel'),
-            ),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.red,
-                foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-              ),
-              onPressed: () async {
-                Navigator.of(ctx).pop();
-                final success = await ref
-                    .read(wordListControllerProvider.notifier)
-                    .deleteList(listName);
-                if (!success && mounted) {
-                  final err =
-                      ref.read(wordListControllerProvider).errorMessage;
-                  if (err != null && DioErrorHandler.isNetworkError(err)) {
-                    NoInternetDialog.show(
-                      context,
-                      onRetry: () async {
-                        final ok = await ref
-                            .read(wordListControllerProvider.notifier)
-                            .deleteList(listName);
-                        if (!ok) throw Exception('Failed');
-                      },
-                    );
-                  }
-                }
-              },
-              child: const Text('Delete'),
-            ),
-          ],
-        );
-      },
-    ).then((_) {
-      if (mounted) _isDialogOpen = false;
-    });
-  }
-
   void _openListStudy(String listName) {
     if (_isNavigating) return;
     _isNavigating = true;
 
     HapticFeedback.mediumImpact();
 
-    // Instant zero-lag retrieval from in-memory state
     final wordListState = ref.read(wordListControllerProvider);
     final listWords = wordListState.words
         .where((w) => w.listName == listName)
         .toList();
 
     context.push(AppRoutes.wordsStudy, extra: {
+      'sessionId': 'words_list_study_$listName',
       'words': listWords,
       'listTitle': listName,
     }).then((_) {
@@ -302,7 +85,7 @@ class _WordsListPageState extends ConsumerState<WordsListPage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              // Header Bar (Swift HomeVC replica)
+              // Header Bar
               Padding(
                 padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
                 child: Row(
@@ -311,6 +94,7 @@ class _WordsListPageState extends ConsumerState<WordsListPage> {
                     Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
+                        const OfflineStatusBadge(),
                         Text(
                           'My Lists',
                           style: TextStyle(
@@ -344,7 +128,10 @@ class _WordsListPageState extends ConsumerState<WordsListPage> {
                         Material(
                           color: Colors.transparent,
                           child: InkWell(
-                            onTap: _showAddListDialog,
+                            onTap: () => WordListDialogs.showAddListDialog(
+                              context,
+                              ref,
+                            ),
                             borderRadius: BorderRadius.circular(14),
                             child: Container(
                               padding: const EdgeInsets.all(10),
@@ -386,7 +173,8 @@ class _WordsListPageState extends ConsumerState<WordsListPage> {
                       ? const Center(
                           child: CircularProgressIndicator(
                             valueColor: AlwaysStoppedAnimation<Color>(
-                                AppColors.turquoise),
+                              AppColors.turquoise,
+                            ),
                           ),
                         )
                       : wordListState.errorMessage != null &&
@@ -408,7 +196,8 @@ class _WordsListPageState extends ConsumerState<WordsListPage> {
                                   // ignore: deprecated_member_use
                                   onReorder: (oldIndex, newIndex) {
                                     ref
-                                        .read(wordListControllerProvider.notifier)
+                                        .read(
+                                            wordListControllerProvider.notifier)
                                         .reorderLists(oldIndex, newIndex);
                                   },
                                   proxyDecorator: (child, index, animation) {
@@ -442,7 +231,6 @@ class _WordsListPageState extends ConsumerState<WordsListPage> {
                                         wordListState.listNames[index];
                                     final gradient = _listGradients[
                                         index % _listGradients.length];
-
                                     final wordCount = wordListState
                                             .wordCountsByList[listName] ??
                                         0;
@@ -453,7 +241,7 @@ class _WordsListPageState extends ConsumerState<WordsListPage> {
                                           const EdgeInsets.only(bottom: 14),
                                       child: ReorderableDelayedDragStartListener(
                                         index: index,
-                                        child: _buildListCard(
+                                        child: WordListCard(
                                           index: index,
                                           listName: listName,
                                           wordCount: wordCount,
@@ -461,9 +249,17 @@ class _WordsListPageState extends ConsumerState<WordsListPage> {
                                           onTap: () =>
                                               _openListStudy(listName),
                                           onRename: () =>
-                                              _showRenameDialog(listName),
+                                              WordListDialogs.showRenameDialog(
+                                            context,
+                                            ref,
+                                            listName,
+                                          ),
                                           onDelete: () =>
-                                              _showDeleteDialog(listName),
+                                              WordListDialogs.showDeleteDialog(
+                                            context,
+                                            ref,
+                                            listName,
+                                          ),
                                         ),
                                       ),
                                     );
@@ -479,7 +275,7 @@ class _WordsListPageState extends ConsumerState<WordsListPage> {
   }
 
   Widget _buildSortMenuButton(bool isDark) {
-    return PopupMenuButton<String>(
+    return PopupMenuButton<ListSortOrder>(
       tooltip: 'Sırala / Düzenle',
       icon: Container(
         padding: const EdgeInsets.all(10),
@@ -511,25 +307,8 @@ class _WordsListPageState extends ConsumerState<WordsListPage> {
             ? const BorderSide(color: AppColors.darkBorder, width: 0.8)
             : BorderSide.none,
       ),
-      onSelected: (val) {
-        final notifier = ref.read(wordListControllerProvider.notifier);
-        switch (val) {
-          case 'az':
-            notifier.sortListsAlphabetical(ascending: true);
-            break;
-          case 'za':
-            notifier.sortListsAlphabetical(ascending: false);
-            break;
-          case 'count_desc':
-            notifier.sortListsByWordCount(descending: true);
-            break;
-          case 'count_asc':
-            notifier.sortListsByWordCount(descending: false);
-            break;
-          case 'reset':
-            notifier.resetListOrder();
-            break;
-        }
+      onSelected: (order) {
+        ref.read(wordListControllerProvider.notifier).sortLists(order);
       },
       itemBuilder: (ctx) => [
         PopupMenuItem(
@@ -545,229 +324,61 @@ class _WordsListPageState extends ConsumerState<WordsListPage> {
           ),
         ),
         const PopupMenuDivider(),
-        const PopupMenuItem(
-          value: 'az',
+        PopupMenuItem(
+          value: ListSortOrder.alphabeticalAsc,
           child: Row(
             children: [
-              Icon(Icons.sort_by_alpha_rounded, size: 20),
-              SizedBox(width: 10),
-              Text('A\'dan Z\'ye'),
+              const Icon(Icons.sort_by_alpha_rounded, size: 20),
+              const SizedBox(width: 10),
+              Text(ListSortOrder.alphabeticalAsc.label),
             ],
           ),
         ),
-        const PopupMenuItem(
-          value: 'za',
+        PopupMenuItem(
+          value: ListSortOrder.alphabeticalDesc,
           child: Row(
             children: [
-              Icon(Icons.sort_by_alpha_rounded, size: 20),
-              SizedBox(width: 10),
-              Text('Z\'den A\'ya'),
+              const Icon(Icons.sort_by_alpha_rounded, size: 20),
+              const SizedBox(width: 10),
+              Text(ListSortOrder.alphabeticalDesc.label),
             ],
           ),
         ),
-        const PopupMenuItem(
-          value: 'count_desc',
+        PopupMenuItem(
+          value: ListSortOrder.wordCountDesc,
           child: Row(
             children: [
-              Icon(Icons.arrow_downward_rounded, size: 20),
-              SizedBox(width: 10),
-              Text('Kelime Sayısı (Çoktan Aza)'),
+              const Icon(Icons.arrow_downward_rounded, size: 20),
+              const SizedBox(width: 10),
+              Text(ListSortOrder.wordCountDesc.label),
             ],
           ),
         ),
-        const PopupMenuItem(
-          value: 'count_asc',
+        PopupMenuItem(
+          value: ListSortOrder.wordCountAsc,
           child: Row(
             children: [
-              Icon(Icons.arrow_upward_rounded, size: 20),
-              SizedBox(width: 10),
-              Text('Kelime Sayısı (Azdan Çoğa)'),
+              const Icon(Icons.arrow_upward_rounded, size: 20),
+              const SizedBox(width: 10),
+              Text(ListSortOrder.wordCountAsc.label),
             ],
           ),
         ),
         const PopupMenuDivider(),
-        const PopupMenuItem(
-          value: 'reset',
+        PopupMenuItem(
+          value: ListSortOrder.reset,
           child: Row(
             children: [
-              Icon(Icons.refresh_rounded, size: 20, color: AppColors.error),
-              SizedBox(width: 10),
-              Text('Sıralamayı Sıfırla',
-                  style: TextStyle(color: AppColors.error)),
+              const Icon(Icons.refresh_rounded, size: 20, color: AppColors.error),
+              const SizedBox(width: 10),
+              Text(
+                ListSortOrder.reset.label,
+                style: const TextStyle(color: AppColors.error),
+              ),
             ],
           ),
         ),
       ],
-    );
-  }
-
-  Widget _buildListCard({
-    required int index,
-    required String listName,
-    required int wordCount,
-    required List<Color> gradient,
-    required VoidCallback onTap,
-    required VoidCallback onRename,
-    required VoidCallback onDelete,
-  }) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-
-    return Container(
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: gradient,
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: gradient.first.withValues(alpha: 0.35),
-            blurRadius: 14,
-            offset: const Offset(0, 6),
-          ),
-        ],
-      ),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          borderRadius: BorderRadius.circular(20),
-          onTap: onTap,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        listName,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.w800,
-                          color: Colors.white,
-                          letterSpacing: 0.2,
-                        ),
-                      ),
-                      if (wordCount > 0) ...[
-                        const SizedBox(height: 3),
-                        Text(
-                          '$wordCount words',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            fontSize: 12.5,
-                            fontWeight: FontWeight.w600,
-                            color: Colors.white.withValues(alpha: 0.85),
-                          ),
-                        ),
-                      ],
-                    ],
-                  ),
-                ),
-
-                // Popup Options Menu
-                PopupMenuButton<String>(
-                  icon: const Icon(
-                    Icons.more_vert_rounded,
-                    color: Colors.white,
-                    size: 22,
-                  ),
-                  color: isDark ? AppColors.darkCardElevated : Colors.white,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(14),
-                    side: isDark
-                        ? const BorderSide(color: AppColors.darkBorder, width: 0.8)
-                        : BorderSide.none,
-                  ),
-                  onSelected: (val) {
-                    if (val == 'rename') onRename();
-                    if (val == 'delete') onDelete();
-                  },
-                  itemBuilder: (ctx) => [
-                    PopupMenuItem(
-                      value: 'rename',
-                      child: Row(
-                        children: [
-                          Icon(
-                            Icons.edit_outlined,
-                            size: 18,
-                            color: isDark ? AppColors.info : AppColors.blue,
-                          ),
-                          const SizedBox(width: 10),
-                          Text(
-                            'Rename List',
-                            style: TextStyle(
-                              color: isDark
-                                  ? AppColors.darkTextPrimary
-                                  : AppColors.lightTextPrimary,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const PopupMenuItem(
-                      value: 'delete',
-                      child: Row(
-                        children: [
-                          Icon(
-                            Icons.delete_outline_rounded,
-                            size: 18,
-                            color: AppColors.error,
-                          ),
-                          SizedBox(width: 10),
-                          Text(
-                            'Delete List',
-                            style: TextStyle(
-                              color: AppColors.error,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-
-                const SizedBox(width: 4),
-
-                // Drag & Reorder Handle
-                ReorderableDragStartListener(
-                  index: index,
-                  child: Tooltip(
-                    message: 'Sürükleyip sırala',
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 6, vertical: 8),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.18),
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: const Icon(
-                        Icons.drag_indicator_rounded,
-                        color: Colors.white,
-                        size: 20,
-                      ),
-                    ),
-                  ),
-                ),
-
-                const SizedBox(width: 6),
-
-                // Right Arrow
-                const Icon(
-                  Icons.arrow_forward_ios_rounded,
-                  color: Colors.white70,
-                  size: 16,
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
     );
   }
 
@@ -827,7 +438,10 @@ class _WordsListPageState extends ConsumerState<WordsListPage> {
                     text: 'Yeni Liste Oluştur',
                     prefixIcon: Icons.add_rounded,
                     variant: ButtonVariant.primary,
-                    onPressed: _showAddListDialog,
+                    onPressed: () => WordListDialogs.showAddListDialog(
+                      context,
+                      ref,
+                    ),
                   ),
                 ],
               ),

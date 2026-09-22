@@ -14,17 +14,15 @@ abstract class AppRoutes {
 
   static const String quiz = '/quiz';
   static const String quizStudy = '/quiz/study';
-  static const String quizHistory = '/quiz-history';
+  static const String quizHistory = '/quiz/history';
 
   static const String plan = '/plan';
   static const String planStudy = '/plan/study';
+  static const String planHistory = '/plan/history';
 
   static const String profile = '/profile';
 
   // Modal / Form / Yardımcı rotalar
   static const String addWord = '/add-word';
   static const String tokenInspector = '/token-inspector';
-
-  // Geriye dönük uyumluluk
-  static const String study = '/study';
 }
