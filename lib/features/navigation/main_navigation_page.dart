@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../core/theme/app_colors.dart';
+import '../plan/controllers/plan_controller.dart';
 import '../quiz/controllers/quiz_controller.dart';
 import '../words/controllers/word_list_controller.dart';
 import '../words/pages/synonyms_page.dart';
@@ -34,7 +35,8 @@ class _MainNavigationShellState extends ConsumerState<MainNavigationShell>
     // İlk veri yüklemesi — shell mount olduğunda
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(wordListControllerProvider.notifier).loadInitialData();
-      ref.read(quizControllerProvider.notifier).loadInitialData();
+      ref.read(quizControllerProvider.notifier).loadHistory();
+      ref.read(planControllerProvider.notifier).loadPlanData();
     });
   }
 

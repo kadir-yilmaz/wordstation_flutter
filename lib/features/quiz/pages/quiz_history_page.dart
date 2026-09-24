@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../../core/router/app_routes.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/widgets/word_detail_bottom_sheet.dart';
+import '../../plan/controllers/plan_controller.dart';
 import '../../words/controllers/word_list_controller.dart';
 import '../../words/models/word_model.dart';
 import '../controllers/quiz_controller.dart';
@@ -25,10 +26,12 @@ class QuizHistoryPage extends ConsumerWidget {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final quizState = ref.watch(quizControllerProvider);
     final quizNotifier = ref.read(quizControllerProvider.notifier);
+    final planState = ref.watch(planControllerProvider);
+    final planNotifier = ref.read(planControllerProvider.notifier);
     final wordListState = ref.watch(wordListControllerProvider);
 
     final historyList = isDailyQuiz
-        ? quizState.dailyPlanDays.map((d) => QuizHistoryModel(
+        ? planState.dailyPlanDays.map((d) => QuizHistoryModel(
             id: d.id.toString(),
             date: d.completedAt,
             title: '${d.dayNumber}. Gün',
@@ -83,7 +86,11 @@ class QuizHistoryPage extends ConsumerWidget {
         child: RefreshIndicator(
           color: AppColors.turquoise,
           onRefresh: () async {
-            await quizNotifier.loadInitialData();
+            if (isDailyQuiz) {
+              await planNotifier.loadPlanData();
+            } else {
+              await quizNotifier.loadHistory();
+            }
           },
           child: historyList.isEmpty
               ? LayoutBuilder(
@@ -362,7 +369,7 @@ class QuizHistoryPage extends ConsumerWidget {
     );
     if (confirm == true) {
       if (isDailyQuiz) {
-        await quizNotifier.clearDailyHistory();
+        await quizNotifier.clearHistory(isDailyQuiz: true);
       } else {
         await quizNotifier.clearGeneralHistory();
       }

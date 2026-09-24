@@ -3,14 +3,14 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/widgets/network_error_view.dart';
-import '../../../core/widgets/offline_status_badge.dart';
 import '../../../core/widgets/responsive_layout.dart';
+import '../../quiz/controllers/quiz_controller.dart';
 import '../../words/controllers/word_list_controller.dart';
-import '../controllers/quiz_controller.dart';
-import '../widgets/active_quiz_view.dart';
+import '../../quiz/widgets/active_quiz_view.dart';
+import '../../quiz/widgets/quiz_result_view.dart';
+import '../controllers/plan_controller.dart';
 import '../widgets/daily_plan/daily_plan_dashboard.dart';
 import '../widgets/daily_plan/daily_plan_setup_view.dart';
-import '../widgets/quiz_result_view.dart';
 
 class DailyPlanPage extends ConsumerStatefulWidget {
   const DailyPlanPage({super.key});
@@ -27,7 +27,7 @@ class _DailyPlanPageState extends ConsumerState<DailyPlanPage> {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
-        ref.read(quizControllerProvider.notifier).loadInitialData();
+        ref.read(planControllerProvider.notifier).loadPlanData();
         ref.read(wordListControllerProvider.notifier).loadInitialData();
       }
     });
@@ -81,7 +81,7 @@ class _DailyPlanPageState extends ConsumerState<DailyPlanPage> {
 
   Future<void> _confirmDeletePlan(
     BuildContext context,
-    QuizController quizNotifier,
+    PlanController planNotifier,
   ) async {
     final confirm = await showDialog<bool>(
       context: context,
@@ -105,7 +105,7 @@ class _DailyPlanPageState extends ConsumerState<DailyPlanPage> {
     );
 
     if (confirm == true) {
-      final success = await quizNotifier.deleteDailyPlan();
+      final success = await planNotifier.deleteDailyPlan();
       if (mounted) {
         setState(() {
           _isCreatingNewPlan = false;
@@ -122,10 +122,26 @@ class _DailyPlanPageState extends ConsumerState<DailyPlanPage> {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final quizState = ref.watch(quizControllerProvider);
     final quizNotifier = ref.read(quizControllerProvider.notifier);
+    final planState = ref.watch(planControllerProvider);
+    final planNotifier = ref.read(planControllerProvider.notifier);
     final wordListState = ref.watch(wordListControllerProvider);
 
-    // Quiz result screen
+    // Quiz result screen — günlük quiz tamamlandığında plan ilerlemesini güncelle
     if (quizState.isDailyQuiz && quizState.isQuizCompleted) {
+      // Ensure plan progress is saved when quiz completes
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && quizState.isQuizCompleted && quizState.isDailyQuiz) {
+          planNotifier.onDailyQuizCompleted(
+            totalQuestions: quizState.totalQuestions,
+            correctCount: quizState.correctCount,
+            wrongCount: quizState.wrongCount,
+            score: quizState.score,
+            maxScore: quizState.maxScore,
+            results: quizState.results,
+          );
+        }
+      });
+
       return PopScope(
         canPop: false,
         onPopInvokedWithResult: (didPop, _) {
@@ -198,7 +214,6 @@ class _DailyPlanPageState extends ConsumerState<DailyPlanPage> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            const OfflineStatusBadge(),
                             Text(
                               _isCreatingNewPlan
                                   ? 'Yeni Plan Oluştur'
@@ -216,8 +231,8 @@ class _DailyPlanPageState extends ConsumerState<DailyPlanPage> {
                             Text(
                               _isCreatingNewPlan
                                   ? 'Kelime listenizden günlük çalışma planı oluşturun'
-                                  : (quizState.dailyPlan != null
-                                      ? 'Sıfır Tekrar Modu • ${quizState.dailyPlan!.listName}'
+                                  : (planState.dailyPlan != null
+                                      ? 'Sıfır Tekrar Modu • ${planState.dailyPlan!.listName}'
                                       : 'Henüz bir plan oluşturulmadı'),
                               textAlign: TextAlign.start,
                               style: TextStyle(
@@ -231,6 +246,18 @@ class _DailyPlanPageState extends ConsumerState<DailyPlanPage> {
                           ],
                         ),
                       ),
+                      if (!_isCreatingNewPlan && planState.dailyPlan != null) ...[
+                        const SizedBox(width: 8),
+                        IconButton(
+                          icon: const Icon(
+                            Icons.delete_outline_rounded,
+                            size: 24,
+                            color: AppColors.error,
+                          ),
+                          tooltip: 'Planı Sil',
+                          onPressed: () => _confirmDeletePlan(context, planNotifier),
+                        ),
+                      ],
                     ],
                   ),
                 ),
@@ -241,7 +268,8 @@ class _DailyPlanPageState extends ConsumerState<DailyPlanPage> {
                   child: _buildBody(
                     context,
                     wordListState,
-                    quizState,
+                    planState,
+                    planNotifier,
                     quizNotifier,
                     isDark,
                   ),
@@ -257,14 +285,15 @@ class _DailyPlanPageState extends ConsumerState<DailyPlanPage> {
   Widget _buildBody(
     BuildContext context,
     WordListState wordListState,
-    QuizState quizState,
+    PlanState planState,
+    PlanController planNotifier,
     QuizController quizNotifier,
     bool isDark,
   ) {
-    final plan = quizState.dailyPlan;
+    final plan = planState.dailyPlan;
 
     // Loading state
-    if (!quizState.isPlanLoaded && plan == null) {
+    if (!planState.isPlanLoaded && plan == null) {
       return Center(
         child: SizedBox(
           height: MediaQuery.of(context).size.height * 0.45,
@@ -297,13 +326,13 @@ class _DailyPlanPageState extends ConsumerState<DailyPlanPage> {
     }
 
     // Error state
-    if ((quizState.hasPlanLoadError && plan == null) ||
+    if ((planState.hasPlanLoadError && plan == null) ||
         (wordListState.errorMessage != null && wordListState.words.isEmpty)) {
       return RefreshIndicator(
         color: AppColors.turquoise,
         onRefresh: () async {
           await ref.read(wordListControllerProvider.notifier).refresh();
-          await quizNotifier.loadInitialData();
+          await planNotifier.loadPlanData();
         },
         child: SingleChildScrollView(
           physics: const AlwaysScrollableScrollPhysics(
@@ -317,7 +346,7 @@ class _DailyPlanPageState extends ConsumerState<DailyPlanPage> {
                   'İnternet bağlantınızı kontrol edip lütfen tekrar deneyin.',
               onRetry: () async {
                 await ref.read(wordListControllerProvider.notifier).refresh();
-                await quizNotifier.loadInitialData();
+                await planNotifier.loadPlanData();
               },
             ),
           ),
@@ -331,7 +360,7 @@ class _DailyPlanPageState extends ConsumerState<DailyPlanPage> {
       color: AppColors.turquoise,
       onRefresh: () async {
         await ref.read(wordListControllerProvider.notifier).refresh();
-        await quizNotifier.loadInitialData();
+        await planNotifier.loadPlanData();
       },
       child: SingleChildScrollView(
         physics: const AlwaysScrollableScrollPhysics(
@@ -343,8 +372,8 @@ class _DailyPlanPageState extends ConsumerState<DailyPlanPage> {
             if (showSetup)
               DailyPlanSetupView(
                 wordListState: wordListState,
-                quizState: quizState,
-                quizNotifier: quizNotifier,
+                planState: planState,
+                planNotifier: planNotifier,
                 isDark: isDark,
                 isCreatingNewPlan: _isCreatingNewPlan,
                 onCancelNewPlan: () =>
@@ -358,11 +387,11 @@ class _DailyPlanPageState extends ConsumerState<DailyPlanPage> {
             else
               DailyPlanDashboard(
                 plan: plan,
-                quizState: quizState,
+                planState: planState,
+                planNotifier: planNotifier,
                 quizNotifier: quizNotifier,
                 allWords: wordListState.words,
                 isDark: isDark,
-                onDeletePlan: () => _confirmDeletePlan(context, quizNotifier),
               ),
             const SizedBox(height: 28),
           ],

@@ -134,7 +134,7 @@ class DailyPlanStreakCard extends StatelessWidget {
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Text(
-                    '${plan.currentPointer} / ${plan.totalWords} Kelime',
+                    '${plan.completedDays} / ${plan.totalDays} gün tamamlandı',
                     style: const TextStyle(
                       fontSize: 12,
                       fontWeight: FontWeight.w600,

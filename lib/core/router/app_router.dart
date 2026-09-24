@@ -7,7 +7,7 @@ import '../../features/auth/pages/register_page.dart';
 import '../../features/navigation/main_navigation_page.dart';
 import '../../features/profile/pages/profile_page.dart';
 import '../../features/profile/pages/token_inspector_page.dart';
-import '../../features/quiz/pages/daily_plan_page.dart';
+import '../../features/plan/pages/daily_plan_page.dart';
 import '../../features/quiz/pages/quiz_history_page.dart';
 import '../../features/quiz/pages/quiz_page.dart';
 import '../../features/words/pages/add_edit_word_page.dart';

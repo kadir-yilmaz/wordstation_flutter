@@ -1,5 +1,5 @@
 import 'dart:convert';
-import 'quiz_history_model.dart';
+import '../../quiz/models/quiz_history_model.dart';
 
 class DailyPlanDayModel {
   final int id;

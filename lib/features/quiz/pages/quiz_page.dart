@@ -103,13 +103,14 @@ class _QuizPageState extends ConsumerState<QuizPage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                // Page Header (Centered, Clean Typography)
+                // Page Header
                 Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
                       'Kelime Testi',
                       style: TextStyle(
-                        fontSize: 24,
+                        fontSize: 28,
                         fontWeight: FontWeight.w800,
                         letterSpacing: -0.4,
                         color: isDark
@@ -117,10 +118,9 @@ class _QuizPageState extends ConsumerState<QuizPage> {
                             : AppColors.lightTextPrimary,
                       ),
                     ),
-                    const SizedBox(height: 4),
+                    const SizedBox(height: 2),
                     Text(
                       'Kelime dağarcığını test et ve pekiştir',
-                      textAlign: TextAlign.center,
                       style: TextStyle(
                         fontSize: 13,
                         fontWeight: FontWeight.w500,

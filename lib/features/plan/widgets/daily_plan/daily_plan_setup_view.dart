@@ -6,12 +6,12 @@ import '../../../../core/theme/app_colors.dart';
 import '../../../../core/widgets/custom_button.dart';
 import '../../../../core/widgets/no_internet_dialog.dart';
 import '../../../words/controllers/word_list_controller.dart';
-import '../../controllers/quiz_controller.dart';
+import '../../controllers/plan_controller.dart';
 
 class DailyPlanSetupView extends ConsumerStatefulWidget {
   final WordListState wordListState;
-  final QuizState quizState;
-  final QuizController quizNotifier;
+  final PlanState planState;
+  final PlanController planNotifier;
   final bool isDark;
   final bool isCreatingNewPlan;
   final VoidCallback onCancelNewPlan;
@@ -20,8 +20,8 @@ class DailyPlanSetupView extends ConsumerStatefulWidget {
   const DailyPlanSetupView({
     super.key,
     required this.wordListState,
-    required this.quizState,
-    required this.quizNotifier,
+    required this.planState,
+    required this.planNotifier,
     required this.isDark,
     required this.isCreatingNewPlan,
     required this.onCancelNewPlan,
@@ -77,7 +77,7 @@ class _DailyPlanSetupViewState extends ConsumerState<DailyPlanSetupView> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        if (widget.isCreatingNewPlan && widget.quizState.dailyPlan != null) ...[
+        if (widget.isCreatingNewPlan && widget.planState.dailyPlan != null) ...[
           Align(
             alignment: Alignment.centerLeft,
             child: TextButton.icon(
@@ -386,7 +386,7 @@ class _DailyPlanSetupViewState extends ConsumerState<DailyPlanSetupView> {
                     await ref
                         .read(wordListControllerProvider.notifier)
                         .refresh();
-                    await widget.quizNotifier.loadInitialData();
+                    await widget.planNotifier.loadPlanData();
                   },
                 );
               } else {
@@ -398,7 +398,7 @@ class _DailyPlanSetupViewState extends ConsumerState<DailyPlanSetupView> {
 
             HapticFeedback.mediumImpact();
 
-            final success = await widget.quizNotifier.createPlan(
+            final success = await widget.planNotifier.createPlan(
               listName: _selectedListName,
               dailyCount: _wordsPerDay,
               englishToTurkish: _enToTr,
@@ -407,13 +407,13 @@ class _DailyPlanSetupViewState extends ConsumerState<DailyPlanSetupView> {
             if (success) {
               widget.onPlanCreated();
             } else if (context.mounted) {
-              final err = ref.read(quizControllerProvider).errorMessage ??
+              final err = ref.read(planControllerProvider).errorMessage ??
                   widget.wordListState.errorMessage;
               if (err != null && DioErrorHandler.isNetworkError(err)) {
                 NoInternetDialog.show(
                   context,
                   onRetry: () async {
-                    final ok = await widget.quizNotifier.createPlan(
+                    final ok = await widget.planNotifier.createPlan(
                       listName: _selectedListName,
                       dailyCount: _wordsPerDay,
                       englishToTurkish: _enToTr,

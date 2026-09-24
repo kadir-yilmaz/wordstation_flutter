@@ -2,10 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/theme/app_colors.dart';
+import '../../plan/controllers/plan_controller.dart';
+import '../../plan/models/daily_plan_day_model.dart';
 import '../../words/controllers/word_list_controller.dart';
 import '../../words/models/word_model.dart';
 import '../controllers/quiz_controller.dart';
-import '../models/daily_plan_day_model.dart';
 import '../models/quiz_history_model.dart';
 import '../pages/quiz_history_page.dart';
 
@@ -34,9 +35,9 @@ class QuizHistoryView extends ConsumerWidget {
   }
 
   Future<void> _confirmClearHistory(
-    BuildContext context,
-    QuizController quizNotifier,
-  ) async {
+    BuildContext context, {
+    required VoidCallback onConfirm,
+  }) async {
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -60,7 +61,7 @@ class QuizHistoryView extends ConsumerWidget {
       ),
     );
     if (confirm == true) {
-      await quizNotifier.clearHistory(isDailyQuiz: isDailyQuiz);
+      onConfirm();
     }
   }
 
@@ -69,6 +70,8 @@ class QuizHistoryView extends ConsumerWidget {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final quizState = ref.watch(quizControllerProvider);
     final quizNotifier = ref.read(quizControllerProvider.notifier);
+    final planState = ref.watch(planControllerProvider);
+    final planNotifier = ref.read(planControllerProvider.notifier);
     final wordListState = ref.watch(wordListControllerProvider);
 
     final historyList = quizState.historyList;
@@ -76,13 +79,17 @@ class QuizHistoryView extends ConsumerWidget {
     return RefreshIndicator(
       color: AppColors.turquoise,
       onRefresh: () async {
-        await quizNotifier.loadInitialData();
+        if (isDailyQuiz) {
+          await planNotifier.loadPlanData();
+        } else {
+          await quizNotifier.loadHistory();
+        }
       },
       child: isDailyQuiz
           ? _buildDailyPlanHistory(
               context: context,
-              quizState: quizState,
-              quizNotifier: quizNotifier,
+              planState: planState,
+              planNotifier: planNotifier,
               wordListState: wordListState,
               isDark: isDark,
             )
@@ -101,12 +108,12 @@ class QuizHistoryView extends ConsumerWidget {
   // ==========================================
   Widget _buildDailyPlanHistory({
     required BuildContext context,
-    required QuizState quizState,
-    required QuizController quizNotifier,
+    required PlanState planState,
+    required PlanController planNotifier,
     required WordListState wordListState,
     required bool isDark,
   }) {
-    final plan = quizState.dailyPlan;
+    final plan = planState.dailyPlan;
     // Eğer plan yoksa veya silinmişse, boş durum göster
     if (plan == null) {
       return _buildEmptyState(isDark);
@@ -114,7 +121,7 @@ class QuizHistoryView extends ConsumerWidget {
 
     // Doğrudan DB'deki DailyPlanDayHistories tablosundan gelen günler
     // En son gün en başa gelsin (Yeniden eskiye)
-    final sortedList = List<DailyPlanDayModel>.from(quizState.dailyPlanDays)
+    final sortedList = List<DailyPlanDayModel>.from(planState.dailyPlanDays)
       ..sort((a, b) => b.dayNumber != a.dayNumber
           ? b.dayNumber.compareTo(a.dayNumber)
           : b.completedAt.compareTo(a.completedAt));
@@ -188,7 +195,7 @@ class QuizHistoryView extends ConsumerWidget {
                   ),
                   if (sortedList.isNotEmpty)
                     InkWell(
-                      onTap: () => _confirmClearHistory(context, quizNotifier),
+                      onTap: () => _confirmClearHistory(context, onConfirm: () => planNotifier.clearDailyPlan()),
                       borderRadius: BorderRadius.circular(8),
                       child: const Padding(
                         padding: EdgeInsets.symmetric(horizontal: 6, vertical: 4),
@@ -417,7 +424,7 @@ class QuizHistoryView extends ConsumerWidget {
                   ),
                 ),
                 InkWell(
-                  onTap: () => _confirmClearHistory(context, quizNotifier),
+                  onTap: () => _confirmClearHistory(context, onConfirm: () => quizNotifier.clearGeneralHistory()),
                   borderRadius: BorderRadius.circular(8),
                   child: const Padding(
                     padding: EdgeInsets.symmetric(horizontal: 6, vertical: 2),

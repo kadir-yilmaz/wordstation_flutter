@@ -3,7 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
-import '../../features/quiz/models/daily_quiz_plan_model.dart';
+import '../../features/plan/models/daily_quiz_plan_model.dart';
 import '../utils/jwt_decoder.dart';
 
 final secureStorageServiceProvider = Provider<SecureStorageService>((ref) {

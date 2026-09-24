@@ -4,15 +4,17 @@ import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import '../../../../core/router/app_routes.dart';
 import '../../../../core/theme/app_colors.dart';
+import '../../../quiz/controllers/quiz_controller.dart';
+import '../../../quiz/models/quiz_history_model.dart';
 import '../../../words/models/word_model.dart';
-import '../../controllers/quiz_controller.dart';
+import '../../controllers/plan_controller.dart';
 import '../../models/daily_quiz_plan_model.dart';
-import '../../models/quiz_history_model.dart';
-import '../../pages/quiz_history_page.dart';
+import '../../../quiz/pages/quiz_history_page.dart';
 
 class DailyPlanActionCards extends StatelessWidget {
   final DailyQuizPlanModel plan;
-  final QuizState quizState;
+  final PlanState planState;
+  final PlanController planNotifier;
   final QuizController quizNotifier;
   final List<WordModel> allWords;
   final bool isDark;
@@ -20,7 +22,8 @@ class DailyPlanActionCards extends StatelessWidget {
   const DailyPlanActionCards({
     super.key,
     required this.plan,
-    required this.quizState,
+    required this.planState,
+    required this.planNotifier,
     required this.quizNotifier,
     required this.allWords,
     required this.isDark,
@@ -29,12 +32,12 @@ class DailyPlanActionCards extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final now = DateTime.now();
-    final todayDay = quizState.dailyPlanDays
+    final todayDay = planState.dailyPlanDays
         .where((d) =>
             d.completedAt.year == now.year &&
             d.completedAt.month == now.month &&
             d.completedAt.day == now.day)
-        .firstOrNull ?? quizState.dailyPlanDays.firstOrNull;
+        .firstOrNull ?? planState.dailyPlanDays.firstOrNull;
 
     final todayHistory = todayDay != null
         ? QuizHistoryModel(
@@ -49,14 +52,9 @@ class DailyPlanActionCards extends StatelessWidget {
             isDailyQuiz: true,
             results: todayDay.results,
           )
-        : quizState.historyList
-            .where((h) =>
-                h.date.year == now.year &&
-                h.date.month == now.month &&
-                h.date.day == now.day)
-            .firstOrNull;
+        : null;
 
-    final isCompleted = quizState.isDailyQuizCompletedToday;
+    final isCompleted = planState.isDailyQuizCompletedToday;
 
     final studyWords = isCompleted
         ? (todayHistory != null && todayHistory.results.isNotEmpty
@@ -118,7 +116,15 @@ class DailyPlanActionCards extends StatelessWidget {
                         context.push(AppRoutes.planHistory);
                       }
                     } else {
-                      quizNotifier.startDailyQuizForToday();
+                      // PlanController'dan kelimeleri al, QuizController'a başlat
+                      final words = planNotifier.getDailyQuizWords();
+                      if (words != null && words.isNotEmpty) {
+                        quizNotifier.startDailyQuiz(
+                          words: words,
+                          englishToTurkish: plan.isEnglishToTurkish,
+                          title: 'Günün Quizi (Gün ${plan.currentDay}/${plan.totalDays})',
+                        );
+                      }
                     }
                   },
                   child: Container(

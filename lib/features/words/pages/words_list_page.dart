@@ -7,7 +7,6 @@ import '../../../core/router/app_routes.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/widgets/custom_button.dart';
 import '../../../core/widgets/network_error_view.dart';
-import '../../../core/widgets/offline_status_badge.dart';
 import '../../../core/widgets/responsive_layout.dart';
 import '../controllers/word_list_controller.dart';
 import '../models/list_sort_order.dart';
@@ -94,7 +93,6 @@ class _WordsListPageState extends ConsumerState<WordsListPage> {
                     Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const OfflineStatusBadge(),
                         Text(
                           'My Lists',
                           style: TextStyle(

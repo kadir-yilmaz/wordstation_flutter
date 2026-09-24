@@ -2,28 +2,29 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import '../../../../core/router/app_routes.dart';
 import '../../../../core/theme/app_colors.dart';
+import '../../../quiz/controllers/quiz_controller.dart';
 import '../../../words/models/word_model.dart';
-import '../../controllers/quiz_controller.dart';
+import '../../controllers/plan_controller.dart';
 import '../../models/daily_quiz_plan_model.dart';
 import 'daily_plan_action_card.dart';
 import 'daily_plan_streak_card.dart';
 
 class DailyPlanDashboard extends StatelessWidget {
   final DailyQuizPlanModel plan;
-  final QuizState quizState;
+  final PlanState planState;
+  final PlanController planNotifier;
   final QuizController quizNotifier;
   final List<WordModel> allWords;
   final bool isDark;
-  final VoidCallback onDeletePlan;
 
   const DailyPlanDashboard({
     super.key,
     required this.plan,
-    required this.quizState,
+    required this.planState,
+    required this.planNotifier,
     required this.quizNotifier,
     required this.allWords,
     required this.isDark,
-    required this.onDeletePlan,
   });
 
   @override
@@ -38,29 +39,11 @@ class DailyPlanDashboard extends StatelessWidget {
         const SizedBox(height: 20),
         DailyPlanActionCards(
           plan: plan,
-          quizState: quizState,
+          planState: planState,
+          planNotifier: planNotifier,
           quizNotifier: quizNotifier,
           allWords: allWords,
           isDark: isDark,
-        ),
-        const SizedBox(height: 20),
-        Center(
-          child: TextButton.icon(
-            icon: const Icon(
-              Icons.delete_outline_rounded,
-              size: 16,
-              color: AppColors.error,
-            ),
-            label: const Text(
-              'Planı Sil',
-              style: TextStyle(
-                fontSize: 13,
-                color: AppColors.error,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            onPressed: onDeletePlan,
-          ),
         ),
       ],
     );
