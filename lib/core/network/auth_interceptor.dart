@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:developer';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
@@ -8,6 +9,9 @@ class AuthInterceptor extends QueuedInterceptorsWrapper {
   final SecureStorageService storage;
   final Dio dio;
   final void Function()? onUnauthorized;
+
+  // Mutex to prevent concurrent token refresh requests (avoids token rotation race condition)
+  static Completer<bool>? _refreshCompleter;
 
   AuthInterceptor({
     required this.storage,
@@ -59,6 +63,25 @@ class AuthInterceptor extends QueuedInterceptorsWrapper {
           err.requestOptions.path.contains('/api/auth/refresh-token');
 
       if (!isAuthEndpoint) {
+        // If a refresh is already in progress, await its completion
+        if (_refreshCompleter != null) {
+          log('AuthInterceptor: Refresh already in progress. Waiting for completion...');
+          final success = await _refreshCompleter!.future;
+          if (success) {
+            final newToken = await storage.getAccessToken();
+            if (newToken != null && newToken.isNotEmpty) {
+              final requestOptions = err.requestOptions;
+              requestOptions.headers['Authorization'] = 'Bearer $newToken';
+              if (kIsWeb) {
+                requestOptions.extra['withCredentials'] = true;
+              }
+              final retryResponse = await dio.fetch(requestOptions);
+              return handler.resolve(retryResponse);
+            }
+          }
+          return handler.next(err);
+        }
+
         final currentToken = await storage.getAccessToken();
         final refreshToken = await storage.getRefreshToken();
 
@@ -67,6 +90,9 @@ class AuthInterceptor extends QueuedInterceptorsWrapper {
         final canAttemptRefresh = kIsWeb || (refreshToken != null && refreshToken.isNotEmpty);
 
         if (canAttemptRefresh) {
+          final completer = Completer<bool>();
+          _refreshCompleter = completer;
+
           try {
             log('AuthInterceptor: 401 received. Attempting smart token refresh (kIsWeb=$kIsWeb)...');
 
@@ -118,6 +144,7 @@ class AuthInterceptor extends QueuedInterceptorsWrapper {
                 );
 
                 log('AuthInterceptor: Token refreshed successfully. Retrying original request.');
+                completer.complete(true);
 
                 // Clone request options and retry
                 final requestOptions = err.requestOptions;
@@ -130,10 +157,14 @@ class AuthInterceptor extends QueuedInterceptorsWrapper {
                 return handler.resolve(retryResponse);
               }
             }
+            completer.complete(false);
           } catch (refreshErr) {
             log('AuthInterceptor: Token refresh failed: $refreshErr');
+            completer.complete(false);
             await storage.clearAll();
             onUnauthorized?.call();
+          } finally {
+            _refreshCompleter = null;
           }
         } else {
           await storage.clearAll();

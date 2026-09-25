@@ -27,8 +27,14 @@ class _DailyPlanPageState extends ConsumerState<DailyPlanPage> {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
-        ref.read(planControllerProvider.notifier).loadPlanData();
-        ref.read(wordListControllerProvider.notifier).loadInitialData();
+        final planState = ref.read(planControllerProvider);
+        if (planState.dailyPlan == null && !planState.isPlanLoaded) {
+          ref.read(planControllerProvider.notifier).loadPlanData();
+        }
+        final wordListState = ref.read(wordListControllerProvider);
+        if (wordListState.words.isEmpty && !wordListState.isLoading) {
+          ref.read(wordListControllerProvider.notifier).loadInitialData();
+        }
       }
     });
   }
@@ -126,22 +132,8 @@ class _DailyPlanPageState extends ConsumerState<DailyPlanPage> {
     final planNotifier = ref.read(planControllerProvider.notifier);
     final wordListState = ref.watch(wordListControllerProvider);
 
-    // Quiz result screen — günlük quiz tamamlandığında plan ilerlemesini güncelle
+    // Quiz result screen — günlük quiz tamamlandığında sonuç görünümünü göster
     if (quizState.isDailyQuiz && quizState.isQuizCompleted) {
-      // Ensure plan progress is saved when quiz completes
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted && quizState.isQuizCompleted && quizState.isDailyQuiz) {
-          planNotifier.onDailyQuizCompleted(
-            totalQuestions: quizState.totalQuestions,
-            correctCount: quizState.correctCount,
-            wrongCount: quizState.wrongCount,
-            score: quizState.score,
-            maxScore: quizState.maxScore,
-            results: quizState.results,
-          );
-        }
-      });
-
       return PopScope(
         canPop: false,
         onPopInvokedWithResult: (didPop, _) {
@@ -246,12 +238,28 @@ class _DailyPlanPageState extends ConsumerState<DailyPlanPage> {
                           ],
                         ),
                       ),
+                      if (!_isCreatingNewPlan) ...[
+                        const SizedBox(width: 4),
+                        IconButton(
+                          icon: const Icon(
+                            Icons.refresh_rounded,
+                            size: 22,
+                          ),
+                          tooltip: 'Yenile',
+                          onPressed: () async {
+                            HapticFeedback.lightImpact();
+                            await ref
+                                .read(wordListControllerProvider.notifier)
+                                .refresh();
+                            await planNotifier.loadPlanData();
+                          },
+                        ),
+                      ],
                       if (!_isCreatingNewPlan && planState.dailyPlan != null) ...[
-                        const SizedBox(width: 8),
                         IconButton(
                           icon: const Icon(
                             Icons.delete_outline_rounded,
-                            size: 24,
+                            size: 22,
                             color: AppColors.error,
                           ),
                           tooltip: 'Planı Sil',
@@ -326,8 +334,7 @@ class _DailyPlanPageState extends ConsumerState<DailyPlanPage> {
     }
 
     // Error state
-    if ((planState.hasPlanLoadError && plan == null) ||
-        (wordListState.errorMessage != null && wordListState.words.isEmpty)) {
+    if (plan == null && planState.hasPlanLoadError) {
       return RefreshIndicator(
         color: AppColors.turquoise,
         onRefresh: () async {
@@ -356,20 +363,20 @@ class _DailyPlanPageState extends ConsumerState<DailyPlanPage> {
 
     final showSetup = plan == null || _isCreatingNewPlan;
 
-    return RefreshIndicator(
-      color: AppColors.turquoise,
-      onRefresh: () async {
-        await ref.read(wordListControllerProvider.notifier).refresh();
-        await planNotifier.loadPlanData();
-      },
-      child: SingleChildScrollView(
-        physics: const AlwaysScrollableScrollPhysics(
-          parent: BouncingScrollPhysics(),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            if (showSetup)
+    if (showSetup) {
+      return RefreshIndicator(
+        color: AppColors.turquoise,
+        onRefresh: () async {
+          await ref.read(wordListControllerProvider.notifier).refresh();
+          await planNotifier.loadPlanData();
+        },
+        child: SingleChildScrollView(
+          physics: const AlwaysScrollableScrollPhysics(
+            parent: BouncingScrollPhysics(),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
               DailyPlanSetupView(
                 wordListState: wordListState,
                 planState: planState,
@@ -383,18 +390,45 @@ class _DailyPlanPageState extends ConsumerState<DailyPlanPage> {
                     setState(() => _isCreatingNewPlan = false);
                   }
                 },
-              )
-            else
-              DailyPlanDashboard(
-                plan: plan,
-                planState: planState,
-                planNotifier: planNotifier,
-                quizNotifier: quizNotifier,
-                allWords: wordListState.words,
-                isDark: isDark,
               ),
-            const SizedBox(height: 28),
-          ],
+              const SizedBox(height: 28),
+            ],
+          ),
+        ),
+      );
+    }
+
+    // Dashboard View — Kartlar dikey ve yatay olarak ekranın merkezinde sabit durur,
+    // gereksiz liste kaydırması olmaz, ancak pull-to-refresh ve üstteki buton aktif kalır.
+    return RefreshIndicator(
+      color: AppColors.turquoise,
+      onRefresh: () async {
+        await ref.read(wordListControllerProvider.notifier).refresh();
+        await planNotifier.loadPlanData();
+      },
+      child: LayoutBuilder(
+        builder: (context, constraints) => SingleChildScrollView(
+          physics: const AlwaysScrollableScrollPhysics(
+            parent: BouncingScrollPhysics(),
+          ),
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              minHeight: constraints.maxHeight,
+            ),
+            child: Center(
+              child: Padding(
+                padding: const EdgeInsets.only(bottom: 24),
+                child: DailyPlanDashboard(
+                  plan: plan,
+                  planState: planState,
+                  planNotifier: planNotifier,
+                  quizNotifier: quizNotifier,
+                  allWords: wordListState.words,
+                  isDark: isDark,
+                ),
+              ),
+            ),
+          ),
         ),
       ),
     );

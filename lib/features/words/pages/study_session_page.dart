@@ -476,6 +476,11 @@ class _StudySessionPageState extends ConsumerState<StudySessionPage>
                                       isDark: isDark,
                                       controller: _searchController,
                                       focusNode: _searchFocusNode,
+                                      isSearchContains: studyState.isSearchContains,
+                                      onToggleSearchMode: () {
+                                        studyNotifier.toggleSearchMode();
+                                        setState(() {});
+                                      },
                                       onChanged: (val) {
                                         studyNotifier.onSearchChanged(val);
                                         setState(() {});
@@ -578,6 +583,11 @@ class _StudySessionPageState extends ConsumerState<StudySessionPage>
                               isDark: isDark,
                               controller: _searchController,
                               focusNode: _searchFocusNode,
+                              isSearchContains: studyState.isSearchContains,
+                              onToggleSearchMode: () {
+                                studyNotifier.toggleSearchMode();
+                                setState(() {});
+                              },
                               onChanged: (val) {
                                 studyNotifier.onSearchChanged(val);
                                 setState(() {});

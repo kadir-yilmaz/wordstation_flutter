@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import '../../../../core/router/app_routes.dart';
-import '../../../../core/theme/app_colors.dart';
 import '../../../quiz/controllers/quiz_controller.dart';
 import '../../../words/models/word_model.dart';
 import '../../controllers/plan_controller.dart';

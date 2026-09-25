@@ -60,26 +60,26 @@ class SoundService {
     return player;
   }
 
-  Future<void> playCorrectSound() async {
+  Future<void> playCorrectSound({double volume = 0.35}) async {
     try {
       HapticFeedback.lightImpact();
       final player = _getNextPlayer();
       if (player != null) {
         await player.stop();
-        await player.play(AssetSource('sounds/correct.mp3'), volume: 1.0);
+        await player.play(AssetSource('sounds/correct.mp3'), volume: volume.clamp(0.0, 1.0));
       }
     } catch (_) {
       SystemSound.play(SystemSoundType.click);
     }
   }
 
-  Future<void> playWrongSound() async {
+  Future<void> playWrongSound({double volume = 0.55}) async {
     try {
       HapticFeedback.heavyImpact();
       final player = _getNextPlayer();
       if (player != null) {
         await player.stop();
-        await player.play(AssetSource('sounds/wrong.mp3'), volume: 1.0);
+        await player.play(AssetSource('sounds/wrong.mp3'), volume: volume.clamp(0.0, 1.0));
       }
     } catch (_) {
       SystemSound.play(SystemSoundType.alert);

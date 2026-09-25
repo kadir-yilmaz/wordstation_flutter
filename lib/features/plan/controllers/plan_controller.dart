@@ -1,8 +1,10 @@
+// ignore_for_file: prefer_initializing_formals
 import 'dart:convert';
 import 'dart:developer' as dev;
 import 'dart:math';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../auth/controllers/auth_controller.dart';
+import '../../quiz/controllers/quiz_controller.dart';
 import '../../quiz/models/quiz_history_model.dart';
 import '../../words/controllers/word_list_controller.dart';
 import '../../words/models/word_model.dart';
@@ -79,12 +81,27 @@ final planControllerProvider =
     }
   });
 
+  // Listen to Daily Quiz completion exactly once
+  ref.listen<QuizState>(quizControllerProvider, (prev, next) {
+    if (next.isDailyQuiz && next.isQuizCompleted && prev?.isQuizCompleted != true) {
+      controller.onDailyQuizCompleted(
+        totalQuestions: next.totalQuestions,
+        correctCount: next.correctCount,
+        wrongCount: next.wrongCount,
+        score: next.score,
+        maxScore: next.maxScore,
+        results: next.results,
+      );
+    }
+  });
+
   return controller;
 });
 
 class PlanController extends StateNotifier<PlanState> {
   List<WordModel> _allWords;
   final IPlanRepository _planRepository;
+  bool _isSavingProgress = false;
 
   PlanController(
     this._allWords, {
@@ -96,6 +113,22 @@ class PlanController extends StateNotifier<PlanState> {
 
   void updateWordsPool(List<WordModel> words) {
     _allWords = List<WordModel>.from(words);
+  }
+
+  /// Aynı güne ait mükerrer kayıtları temizler (en son tamamlanan kaydı tutar)
+  static List<DailyPlanDayModel> deduplicateDays(List<DailyPlanDayModel> days) {
+    final Map<int, DailyPlanDayModel> map = {};
+    for (final day in days) {
+      final existing = map[day.dayNumber];
+      if (existing == null ||
+          day.completedAt.isAfter(existing.completedAt) ||
+          day.id > existing.id) {
+        map[day.dayNumber] = day;
+      }
+    }
+    final sorted = map.values.toList()
+      ..sort((a, b) => b.dayNumber.compareTo(a.dayNumber));
+    return sorted;
   }
 
   /// Plan verilerini API'den yükler.
@@ -114,7 +147,8 @@ class PlanController extends StateNotifier<PlanState> {
         isDailyDone = cloudPlan.isCompletedToday(todayStr);
         final allDays = await _planRepository.getPlanDays();
         final planIdInt = int.tryParse(cloudPlan.id) ?? 0;
-        planDays = allDays.where((d) => d.dailyQuizPlanId == planIdInt).toList();
+        final rawDays = allDays.where((d) => d.dailyQuizPlanId == planIdInt).toList();
+        planDays = deduplicateDays(rawDays);
       }
     } catch (e) {
       hasPlanError = true;
@@ -214,82 +248,91 @@ class PlanController extends StateNotifier<PlanState> {
   }) async {
     final plan = state.dailyPlan;
     if (plan == null) return;
+    if (_isSavingProgress) return;
+    _isSavingProgress = true;
 
-    final todayStr = _formatTodayDate();
-    final newStreak = plan.streakDays + 1;
-    final newPointer =
-        min(plan.currentPointer + totalQuestions, plan.totalWords);
-    final dayNumber = plan.currentDay;
-
-    // 1. Günlük test sonucunu kaydet
     try {
-      final resultsJson =
-          jsonEncode(results.map((r) => r.toJson()).toList());
-      await _planRepository.saveDayHistory(
+      final todayStr = _formatTodayDate();
+      final newStreak = plan.streakDays + 1;
+      final newPointer =
+          min(plan.currentPointer + totalQuestions, plan.totalWords);
+      final dayNumber = plan.currentDay;
+
+      // 1. Günlük test sonucunu kaydet
+      try {
+        final resultsJson =
+            jsonEncode(results.map((r) => r.toJson()).toList());
+        await _planRepository.saveDayHistory(
+          dayNumber: dayNumber,
+          totalQuestions: totalQuestions,
+          correctCount: correctCount,
+          wrongCount: wrongCount,
+          score: score,
+          maxScore: maxScore,
+          resultsJson: resultsJson,
+        );
+      } catch (e) {
+        dev.log('PlanController.onDailyQuizCompleted saveDayHistory error: $e');
+      }
+
+      // 2. Plan ilerlemesini güncelle
+      DailyQuizPlanModel? updatedPlan;
+      try {
+        updatedPlan = await _planRepository.updateProgress(
+          newPointer: newPointer,
+          lastCompletedDate: todayStr,
+          streakDays: newStreak,
+        );
+      } catch (e) {
+        dev.log(
+            'PlanController.onDailyQuizCompleted updateProgress error: $e');
+      }
+
+      updatedPlan ??= plan.copyWith(
+        currentPointer: newPointer,
+        lastCompletedDate: todayStr,
+        streakDays: newStreak,
+      );
+
+      // 3. Güncel geçmiş günleri çek ve mükerrerleri temizle
+      final currentDayModel = DailyPlanDayModel(
+        id: DateTime.now().millisecondsSinceEpoch,
+        dailyQuizPlanId: int.tryParse(plan.id) ?? 0,
         dayNumber: dayNumber,
+        completedAt: DateTime.now(),
         totalQuestions: totalQuestions,
         correctCount: correctCount,
         wrongCount: wrongCount,
         score: score,
         maxScore: maxScore,
-        resultsJson: resultsJson,
+        results: results,
       );
-    } catch (e) {
-      dev.log('PlanController.onDailyQuizCompleted saveDayHistory error: $e');
-    }
 
-    // 2. Plan ilerlemesini güncelle
-    DailyQuizPlanModel? updatedPlan;
-    try {
-      updatedPlan = await _planRepository.updateProgress(
-        newPointer: newPointer,
-        lastCompletedDate: todayStr,
-        streakDays: newStreak,
+      List<DailyPlanDayModel> updatedDays = [
+        currentDayModel,
+        ...state.dailyPlanDays.where((d) => d.dayNumber != dayNumber),
+      ];
+
+      try {
+        final cloudDays = await _planRepository.getPlanDays();
+        if (cloudDays.isNotEmpty) {
+          final planIdInt = int.tryParse(updatedPlan.id) ?? 0;
+          final rawDays = cloudDays.where((d) => d.dailyQuizPlanId == planIdInt).toList();
+          updatedDays = deduplicateDays(rawDays);
+        }
+      } catch (_) {}
+
+      updatedDays = deduplicateDays(updatedDays);
+
+      if (!mounted) return;
+      state = state.copyWith(
+        dailyPlan: updatedPlan,
+        dailyPlanDays: updatedDays,
+        isDailyQuizCompletedToday: true,
       );
-    } catch (e) {
-      dev.log(
-          'PlanController.onDailyQuizCompleted updateProgress error: $e');
+    } finally {
+      _isSavingProgress = false;
     }
-
-    updatedPlan ??= plan.copyWith(
-      currentPointer: newPointer,
-      lastCompletedDate: todayStr,
-      streakDays: newStreak,
-    );
-
-    // 3. Güncel geçmiş günleri çek
-    final currentDayModel = DailyPlanDayModel(
-      id: DateTime.now().millisecondsSinceEpoch,
-      dailyQuizPlanId: int.tryParse(plan.id) ?? 0,
-      dayNumber: dayNumber,
-      completedAt: DateTime.now(),
-      totalQuestions: totalQuestions,
-      correctCount: correctCount,
-      wrongCount: wrongCount,
-      score: score,
-      maxScore: maxScore,
-      results: results,
-    );
-
-    List<DailyPlanDayModel> updatedDays = [
-      currentDayModel,
-      ...state.dailyPlanDays.where((d) => d.dayNumber != dayNumber),
-    ];
-
-    try {
-      final cloudDays = await _planRepository.getPlanDays();
-      if (cloudDays.isNotEmpty) {
-        final planIdInt = int.tryParse(updatedPlan!.id) ?? 0;
-        updatedDays = cloudDays.where((d) => d.dailyQuizPlanId == planIdInt).toList();
-      }
-    } catch (_) {}
-
-    if (!mounted) return;
-    state = state.copyWith(
-      dailyPlan: updatedPlan,
-      dailyPlanDays: updatedDays,
-      isDailyQuizCompletedToday: true,
-    );
   }
 
   /// Günlük quiz için kelimeleri hazırlar.

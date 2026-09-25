@@ -64,7 +64,9 @@ class AuthController extends StateNotifier<AuthState> {
   AuthController({
     required this.authService,
     required this.storage,
-  }) : super(AuthState.initial());
+  }) : super(AuthState.initial()) {
+    checkAuthStatus();
+  }
 
   Future<void> checkAuthStatus() async {
     try {

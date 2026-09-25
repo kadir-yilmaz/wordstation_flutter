@@ -39,7 +39,8 @@ class _WordsListPageState extends ConsumerState<WordsListPage> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (ref.read(wordListControllerProvider).words.isEmpty) {
+      final state = ref.read(wordListControllerProvider);
+      if (state.words.isEmpty && !state.isLoading) {
         ref.read(wordListControllerProvider.notifier).loadInitialData();
       }
     });

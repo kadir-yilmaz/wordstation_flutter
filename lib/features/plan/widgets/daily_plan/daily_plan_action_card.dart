@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import '../../../../core/router/app_routes.dart';
-import '../../../../core/theme/app_colors.dart';
 import '../../../quiz/controllers/quiz_controller.dart';
 import '../../../quiz/models/quiz_history_model.dart';
 import '../../../words/models/word_model.dart';
@@ -333,46 +332,6 @@ class DailyPlanActionCards extends StatelessWidget {
             ),
           ],
         ),
-
-        if (isCompleted && todayHistory != null) ...[
-          const SizedBox(height: 16),
-          Center(
-            child: Container(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              decoration: BoxDecoration(
-                color: isDark ? AppColors.darkSurface : Colors.white,
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(
-                  color:
-                      isDark ? AppColors.darkBorder : AppColors.lightBorder,
-                  width: 1,
-                ),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Icon(
-                    Icons.check_circle_rounded,
-                    size: 16,
-                    color: Color(0xFF34C759),
-                  ),
-                  const SizedBox(width: 8),
-                  Text(
-                    'Bugünün Skoru: ${todayHistory.correctCount}/${todayHistory.totalQuestions} Doğru (%${todayHistory.percentage})',
-                    style: TextStyle(
-                      fontSize: 12.5,
-                      fontWeight: FontWeight.w700,
-                      color: isDark
-                          ? AppColors.darkTextPrimary
-                          : AppColors.lightTextPrimary,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ],
       ],
     );
   }

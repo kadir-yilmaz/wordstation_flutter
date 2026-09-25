@@ -107,10 +107,20 @@ void main() {
       expect(controller.state.currentIndex, 2);
       expect(controller.state.currentWord?.en, 'cherry');
 
-      // Filter by search query
+      // Filter by search query (default startsWith)
       controller.onSearchChanged('ban');
       expect(controller.state.words.length, 1);
       expect(controller.state.currentWord?.en, 'banana');
+
+      // 'err' doesn't start with any word in startsWith mode
+      controller.onSearchChanged('err');
+      expect(controller.state.words.isEmpty, true);
+
+      // Toggle to contains mode: 'err' matches 'cherry'
+      controller.toggleSearchMode();
+      expect(controller.state.isSearchContains, true);
+      expect(controller.state.words.length, 1);
+      expect(controller.state.currentWord?.en, 'cherry');
 
       // Clear search restores all words
       controller.onSearchChanged('');

@@ -127,6 +127,7 @@ class QuizController extends StateNotifier<QuizState> {
     SoundService? soundService,
     required IQuizRepository quizRepository,
   })  : _soundService = soundService ?? SoundService(),
+        // ignore: prefer_initializing_formals
         _quizRepository = quizRepository,
         super(QuizState.initial()) {
     loadHistory();

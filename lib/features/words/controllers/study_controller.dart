@@ -23,6 +23,7 @@ class StudyState {
   final bool isRandom;
   final bool isPlayingTts;
   final List<SynonymBadgeItem> synonymBadges;
+  final bool isSearchContains;
 
   const StudyState({
     required this.words,
@@ -31,6 +32,7 @@ class StudyState {
     this.isRandom = false,
     this.isPlayingTts = false,
     this.synonymBadges = const [],
+    this.isSearchContains = false,
   });
 
   factory StudyState.empty() => const StudyState(
@@ -52,6 +54,7 @@ class StudyState {
     bool? isRandom,
     bool? isPlayingTts,
     List<SynonymBadgeItem>? synonymBadges,
+    bool? isSearchContains,
   }) {
     return StudyState(
       words: words ?? this.words,
@@ -60,6 +63,7 @@ class StudyState {
       isRandom: isRandom ?? this.isRandom,
       isPlayingTts: isPlayingTts ?? this.isPlayingTts,
       synonymBadges: synonymBadges ?? this.synonymBadges,
+      isSearchContains: isSearchContains ?? this.isSearchContains,
     );
   }
 }
@@ -192,7 +196,22 @@ class StudyController extends StateNotifier<StudyState> {
     );
   }
 
+  String _lastSearchQuery = '';
+
+  void toggleSearchMode() {
+    state = state.copyWith(isSearchContains: !state.isSearchContains);
+    onSearchChanged(_lastSearchQuery);
+  }
+
+  void setSearchContains(bool isContains) {
+    if (state.isSearchContains != isContains) {
+      state = state.copyWith(isSearchContains: isContains);
+      onSearchChanged(_lastSearchQuery);
+    }
+  }
+
   void onSearchChanged(String query) {
+    _lastSearchQuery = query;
     if (_allWords.isEmpty) return;
     final q = query.trim().toLowerCase();
     if (q.isEmpty) {
@@ -207,13 +226,19 @@ class StudyController extends StateNotifier<StudyState> {
 
     final filtered = _allWords.where((w) {
       final en = w.en.toLowerCase().trim();
-      return en.startsWith(q);
+      return state.isSearchContains ? en.contains(q) : en.startsWith(q);
     }).toList();
 
-    // Strict alphabetical sorting by English word
+    // Sorting: In contains mode, sort matches that start with query first, then alphabetical
     filtered.sort((a, b) {
       final aEn = a.en.toLowerCase().trim();
       final bEn = b.en.toLowerCase().trim();
+      if (state.isSearchContains) {
+        final aStarts = aEn.startsWith(q);
+        final bStarts = bEn.startsWith(q);
+        if (aStarts && !bStarts) return -1;
+        if (!aStarts && bStarts) return 1;
+      }
       return aEn.compareTo(bEn);
     });
 

@@ -34,9 +34,15 @@ class _MainNavigationShellState extends ConsumerState<MainNavigationShell>
     WidgetsBinding.instance.addObserver(this);
     // İlk veri yüklemesi — shell mount olduğunda
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      ref.read(wordListControllerProvider.notifier).loadInitialData();
+      final wordListState = ref.read(wordListControllerProvider);
+      if (wordListState.words.isEmpty && !wordListState.isLoading) {
+        ref.read(wordListControllerProvider.notifier).loadInitialData();
+      }
       ref.read(quizControllerProvider.notifier).loadHistory();
-      ref.read(planControllerProvider.notifier).loadPlanData();
+      final planState = ref.read(planControllerProvider);
+      if (planState.dailyPlan == null && !planState.isPlanLoaded) {
+        ref.read(planControllerProvider.notifier).loadPlanData();
+      }
     });
   }
 

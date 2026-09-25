@@ -120,11 +120,8 @@ class QuizHistoryView extends ConsumerWidget {
     }
 
     // Doğrudan DB'deki DailyPlanDayHistories tablosundan gelen günler
-    // En son gün en başa gelsin (Yeniden eskiye)
-    final sortedList = List<DailyPlanDayModel>.from(planState.dailyPlanDays)
-      ..sort((a, b) => b.dayNumber != a.dayNumber
-          ? b.dayNumber.compareTo(a.dayNumber)
-          : b.completedAt.compareTo(a.completedAt));
+    // En son gün en başa gelsin (Yeniden eskiye) ve aynı gün tekrarlarını tekilleştir
+    final sortedList = PlanController.deduplicateDays(planState.dailyPlanDays);
 
     final totalDays = plan.totalDays > 0
         ? plan.totalDays

@@ -3,6 +3,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:wordstation_flutter/core/constants/api_constants.dart';
 import 'package:wordstation_flutter/core/storage/secure_storage_service.dart';
+import 'package:wordstation_flutter/features/plan/controllers/plan_controller.dart';
 import 'package:wordstation_flutter/features/plan/models/daily_plan_day_model.dart';
 import 'package:wordstation_flutter/features/plan/models/daily_quiz_plan_model.dart';
 import 'package:wordstation_flutter/features/plan/repositories/plan_repository.dart';
@@ -127,6 +128,47 @@ void main() {
       expect(parsed.id, 1);
       expect(parsed.dayNumber, 3);
       expect(parsed.score, 80);
+    });
+
+    test('PlanController.deduplicateDays collapses repeated day numbers into single latest entry', () {
+      final now = DateTime.now();
+      final day1 = DailyPlanDayModel(
+        id: 1,
+        dailyQuizPlanId: 10,
+        dayNumber: 1,
+        completedAt: now.subtract(const Duration(days: 1)),
+        totalQuestions: 10,
+        correctCount: 10,
+        wrongCount: 0,
+        score: 100,
+        maxScore: 100,
+        results: const [],
+      );
+
+      // Simulating the 174 duplicate day 2 entries created by the build loop
+      final duplicateDay2Entries = List.generate(174, (i) => DailyPlanDayModel(
+        id: 100 + i,
+        dailyQuizPlanId: 10,
+        dayNumber: 2,
+        completedAt: now.add(Duration(seconds: i)),
+        totalQuestions: 10,
+        correctCount: 9,
+        wrongCount: 1,
+        score: 90,
+        maxScore: 100,
+        results: const [],
+      ));
+
+      final allDays = [day1, ...duplicateDay2Entries];
+      final deduplicated = PlanController.deduplicateDays(allDays);
+
+      // Should only have 2 distinct days
+      expect(deduplicated.length, 2);
+      expect(deduplicated.map((d) => d.dayNumber).toSet(), {1, 2});
+
+      // Day 2 should be the latest entry (highest id / latest completedAt)
+      final keptDay2 = deduplicated.firstWhere((d) => d.dayNumber == 2);
+      expect(keptDay2.id, 100 + 173);
     });
   });
 
