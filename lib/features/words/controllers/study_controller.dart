@@ -24,6 +24,7 @@ class StudyState {
   final bool isPlayingTts;
   final List<SynonymBadgeItem> synonymBadges;
   final bool isSearchContains;
+  final bool isSearchTr;
 
   const StudyState({
     required this.words,
@@ -33,6 +34,7 @@ class StudyState {
     this.isPlayingTts = false,
     this.synonymBadges = const [],
     this.isSearchContains = false,
+    this.isSearchTr = false,
   });
 
   factory StudyState.empty() => const StudyState(
@@ -55,6 +57,7 @@ class StudyState {
     bool? isPlayingTts,
     List<SynonymBadgeItem>? synonymBadges,
     bool? isSearchContains,
+    bool? isSearchTr,
   }) {
     return StudyState(
       words: words ?? this.words,
@@ -64,6 +67,7 @@ class StudyState {
       isPlayingTts: isPlayingTts ?? this.isPlayingTts,
       synonymBadges: synonymBadges ?? this.synonymBadges,
       isSearchContains: isSearchContains ?? this.isSearchContains,
+      isSearchTr: isSearchTr ?? this.isSearchTr,
     );
   }
 }
@@ -203,6 +207,11 @@ class StudyController extends StateNotifier<StudyState> {
     onSearchChanged(_lastSearchQuery);
   }
 
+  void toggleSearchLang() {
+    state = state.copyWith(isSearchTr: !state.isSearchTr);
+    onSearchChanged(_lastSearchQuery);
+  }
+
   void setSearchContains(bool isContains) {
     if (state.isSearchContains != isContains) {
       state = state.copyWith(isSearchContains: isContains);
@@ -225,21 +234,21 @@ class StudyController extends StateNotifier<StudyState> {
     }
 
     final filtered = _allWords.where((w) {
-      final en = w.en.toLowerCase().trim();
-      return state.isSearchContains ? en.contains(q) : en.startsWith(q);
+      final target = state.isSearchTr ? w.tr.toLowerCase().trim() : w.en.toLowerCase().trim();
+      return state.isSearchContains ? target.contains(q) : target.startsWith(q);
     }).toList();
 
     // Sorting: In contains mode, sort matches that start with query first, then alphabetical
     filtered.sort((a, b) {
-      final aEn = a.en.toLowerCase().trim();
-      final bEn = b.en.toLowerCase().trim();
+      final aTarget = state.isSearchTr ? a.tr.toLowerCase().trim() : a.en.toLowerCase().trim();
+      final bTarget = state.isSearchTr ? b.tr.toLowerCase().trim() : b.en.toLowerCase().trim();
       if (state.isSearchContains) {
-        final aStarts = aEn.startsWith(q);
-        final bStarts = bEn.startsWith(q);
+        final aStarts = aTarget.startsWith(q);
+        final bStarts = bTarget.startsWith(q);
         if (aStarts && !bStarts) return -1;
         if (!aStarts && bStarts) return 1;
       }
-      return aEn.compareTo(bEn);
+      return aTarget.compareTo(bTarget);
     });
 
     state = state.copyWith(

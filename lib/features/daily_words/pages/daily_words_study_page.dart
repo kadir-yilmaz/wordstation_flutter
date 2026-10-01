@@ -7,6 +7,7 @@ import '../../../core/widgets/network_error_view.dart';
 import '../../../core/widgets/word_detail_bottom_sheet.dart';
 import '../../words/controllers/word_list_controller.dart';
 import '../../words/models/word_model.dart';
+import '../../words/widgets/study/study_search_bar.dart';
 import '../controllers/daily_word_controller.dart';
 import '../models/daily_word_session.dart';
 
@@ -23,6 +24,11 @@ class _DailyWordsStudyPageState extends ConsumerState<DailyWordsStudyPage>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
   String? _selectedList;
+  final TextEditingController _searchController = TextEditingController();
+  String _searchQuery = '';
+  bool _isSearchContains = false;
+  bool _isSearchTr = false;
+  final FocusNode _searchFocusNode = FocusNode();
 
   @override
   void initState() {
@@ -45,6 +51,8 @@ class _DailyWordsStudyPageState extends ConsumerState<DailyWordsStudyPage>
 
   @override
   void dispose() {
+    _searchController.dispose();
+    _searchFocusNode.dispose();
     _tabController.dispose();
     super.dispose();
   }
@@ -163,37 +171,96 @@ class _DailyWordsStudyPageState extends ConsumerState<DailyWordsStudyPage>
     final dailyWordIds = session?.dailyWords.map((e) => e.wordId).toSet() ?? {};
     final completedWordIds = session?.completedWords.map((e) => e.wordId).toSet() ?? {};
 
-    final unselectedWords = allWords
+    var unselectedWords = allWords
         .where((w) => !dailyWordIds.contains(w.id) && !completedWordIds.contains(w.id))
         .toList();
+        
+    final hasAnyUnselectedWords = unselectedWords.isNotEmpty;
 
-    if (unselectedWords.isEmpty) {
-      return const Center(child: Text('Tüm kelimeler seçildi veya çalışıldı.'));
+    if (_searchQuery.isNotEmpty) {
+      final query = _searchQuery.toLowerCase();
+      unselectedWords = unselectedWords.where((w) {
+        final target = _isSearchTr ? w.tr.toLowerCase() : w.en.toLowerCase();
+        return _isSearchContains ? target.contains(query) : target.startsWith(query);
+      }).toList();
     }
 
-    return ListView.builder(
-      padding: const EdgeInsets.all(16),
-      itemCount: unselectedWords.length,
-      itemBuilder: (context, index) {
-        final word = unselectedWords[index];
-        final isDaily = false;
-        final isCompleted = false;
+    return Column(
+      children: [
+        if (hasAnyUnselectedWords || _searchQuery.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+            child: StudySearchBar(
+              key: const ValueKey('searchField'),
+              isDark: isDark,
+              controller: _searchController,
+              focusNode: _searchFocusNode,
+              isSearchContains: _isSearchContains,
+              isSearchTr: _isSearchTr,
+              onToggleSearchMode: () {
+                setState(() {
+                  _isSearchContains = !_isSearchContains;
+                });
+              },
+              onToggleSearchLang: () {
+                setState(() {
+                  _isSearchTr = !_isSearchTr;
+                });
+              },
+              onChanged: (value) {
+                setState(() {
+                  _searchQuery = value;
+                });
+              },
+              onClear: () {
+                _searchController.clear();
+                setState(() {
+                  _searchQuery = '';
+                });
+              },
+            ),
+          ),
+        Expanded(
+          child: !hasAnyUnselectedWords && _searchQuery.isEmpty
+              ? Center(
+                  child: Text(
+                    'Tüm kelimeler seçildi veya çalışıldı.',
+                    style: TextStyle(color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary),
+                  ),
+                )
+              : unselectedWords.isEmpty
+                  ? Center(
+                      child: Text(
+                        'Arama sonucunda kelime bulunamadı.',
+                        style: TextStyle(color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary),
+                      ),
+                    )
+                  : ListView.builder(
+                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                      itemCount: unselectedWords.length,
+                      itemBuilder: (context, index) {
+                        final word = unselectedWords[index];
+                        final isDaily = false;
+                        final isCompleted = false;
 
-        return _buildWordCard(
-          word.en,
-          word.tr,
-          isDaily,
-          isCompleted,
-          isDark,
-          onAddTap: () {
-            if (!isDaily && !isCompleted && word.id != null) {
-              notifier.addToDaily(currentList, [word.id as int]);
-              HapticFeedback.lightImpact();
-            }
-          },
-          onTap: () => showWordDetailModal(context, word: word),
-        );
-      },
+                        return _buildWordCard(
+                          word.en,
+                          word.tr,
+                          isDaily,
+                          isCompleted,
+                          isDark,
+                          onAddTap: () {
+                            if (!isDaily && !isCompleted && word.id != null) {
+                              notifier.addToDaily(currentList, [word.id as int]);
+                              HapticFeedback.lightImpact();
+                            }
+                          },
+                          onTap: () => showWordDetailModal(context, word: word),
+                        );
+                      },
+                    ),
+        ),
+      ],
     );
   }
 

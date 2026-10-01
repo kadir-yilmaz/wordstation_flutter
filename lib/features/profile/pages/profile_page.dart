@@ -433,47 +433,7 @@ class ProfilePage extends ConsumerWidget {
                 ),
               ),
 
-              const SizedBox(height: 12),
 
-              // App Info Card
-              AnimatedContainer(
-                duration: const Duration(milliseconds: 300),
-                curve: Curves.easeInOutCubic,
-                padding: const EdgeInsets.all(18),
-                decoration: BoxDecoration(
-                  color: isDark ? AppColors.darkSurface : Colors.white,
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(
-                    color: isDark
-                        ? AppColors.darkBorder
-                        : AppColors.lightBorder,
-                    width: 1.2,
-                  ),
-                ),
-                child: Column(
-                  children: [
-                    _buildInfoRow(
-                      icon: Icons.info_outline_rounded,
-                      title: 'Uygulama Sürümü',
-                      value: '1.0.0 (Flutter)',
-                      isDark: isDark,
-                    ),
-                    Divider(
-                      height: 24,
-                      color: isDark
-                          ? AppColors.darkBorder
-                          : AppColors.lightBorder,
-                    ),
-                    _buildInfoRow(
-                      icon: Icons.cloud_done_rounded,
-                      title: 'Sunucu Durumu',
-                      value: 'Bağlı (wsapi.runasp.net)',
-                      isDark: isDark,
-                      valueColor: AppColors.success,
-                    ),
-                  ],
-                ),
-              ),
 
               const SizedBox(height: 28),
 
