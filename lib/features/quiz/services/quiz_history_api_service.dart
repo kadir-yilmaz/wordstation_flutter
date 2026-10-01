@@ -28,15 +28,12 @@ class QuizHistoryApiService {
   }
 
   /// Kullanıcının test geçmişini API'den getirir.
-  Future<List<QuizHistoryModel>> getHistory({bool? isDailyQuiz}) async {
+  Future<List<QuizHistoryModel>> getHistory() async {
     try {
       final userId = await _resolveUserId();
       final queryParams = <String, dynamic>{};
       if (userId != null && userId.isNotEmpty) {
         queryParams['userId'] = userId;
-      }
-      if (isDailyQuiz != null) {
-        queryParams['isDailyQuiz'] = isDailyQuiz;
       }
 
       final response = await _apiClient.get(
@@ -73,7 +70,7 @@ class QuizHistoryApiService {
         'totalQuestions': history.totalQuestions,
         'correctCount': history.correctCount,
         'wrongCount': history.wrongCount,
-        'isDailyQuiz': history.isDailyQuiz,
+
         'results': history.results.map((r) => {
           'word': r.word.toJson(),
           'questionText': r.questionText,
@@ -102,15 +99,12 @@ class QuizHistoryApiService {
   }
 
   /// Kullanıcının test geçmişini API'den siler.
-  Future<bool> clearHistory({bool? isDailyQuiz}) async {
+  Future<bool> clearHistory() async {
     try {
       final userId = await _resolveUserId();
       final queryParams = <String, dynamic>{};
       if (userId != null && userId.isNotEmpty) {
         queryParams['userId'] = userId;
-      }
-      if (isDailyQuiz != null) {
-        queryParams['isDailyQuiz'] = isDailyQuiz;
       }
 
       final response = await _apiClient.delete(

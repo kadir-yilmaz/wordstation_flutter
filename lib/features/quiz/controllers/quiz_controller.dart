@@ -19,7 +19,6 @@ class QuizState {
   final bool isAnswered;
   final bool isQuizCompleted;
   final bool isEnglishToTurkish;
-  final bool isDailyQuiz;
   final String quizTitle;
   final List<QuizQuestionResult> results;
   final List<QuizHistoryModel> historyList;
@@ -33,7 +32,6 @@ class QuizState {
     this.isAnswered = false,
     this.isQuizCompleted = false,
     this.isEnglishToTurkish = true,
-    this.isDailyQuiz = false,
     this.quizTitle = 'Genel Test',
     this.results = const [],
     this.historyList = const [],
@@ -62,7 +60,6 @@ class QuizState {
     bool? isAnswered,
     bool? isQuizCompleted,
     bool? isEnglishToTurkish,
-    bool? isDailyQuiz,
     String? quizTitle,
     List<QuizQuestionResult>? results,
     List<QuizHistoryModel>? historyList,
@@ -76,7 +73,6 @@ class QuizState {
       isAnswered: isAnswered ?? this.isAnswered,
       isQuizCompleted: isQuizCompleted ?? this.isQuizCompleted,
       isEnglishToTurkish: isEnglishToTurkish ?? this.isEnglishToTurkish,
-      isDailyQuiz: isDailyQuiz ?? this.isDailyQuiz,
       quizTitle: quizTitle ?? this.quizTitle,
       results: results ?? this.results,
       historyList: historyList ?? this.historyList,
@@ -141,48 +137,19 @@ class QuizController extends StateNotifier<QuizState> {
   Future<void> loadHistory() async {
     try {
       final allHistory = await _quizRepository.getHistory();
-      final generalHistory = allHistory.where((h) => !h.isDailyQuiz).toList();
       if (!mounted) return;
-      state = state.copyWith(historyList: generalHistory);
+      state = state.copyWith(historyList: allHistory);
     } catch (e) {
       dev.log('QuizController.loadHistory error: $e');
     }
   }
 
-  /// Günlük quiz'i başlatır (PlanController'dan kelimeler gelir).
-  void startDailyQuiz({
-    required List<WordModel> words,
-    required bool englishToTurkish,
-    required String title,
-  }) {
-    if (words.isEmpty) return;
-
-    final questions = _buildQuestionsFromWords(
-      selectedWords: words,
-      pool: _allWords,
-      englishToTurkish: englishToTurkish,
-    );
-
-    state = QuizState(
-      questions: questions,
-      currentIndex: 0,
-      score: 0,
-      isAnswered: false,
-      isQuizCompleted: false,
-      isEnglishToTurkish: englishToTurkish,
-      isDailyQuiz: true,
-      quizTitle: title,
-      results: [],
-      historyList: state.historyList,
-    );
-  }
 
   void generateQuiz({
     List<WordModel>? customWords,
     int questionCount = 10,
     bool englishToTurkish = true,
     String title = 'Genel Test',
-    bool isDailyQuiz = false,
   }) {
     final pool = (customWords != null && customWords.isNotEmpty)
         ? customWords
@@ -210,7 +177,6 @@ class QuizController extends StateNotifier<QuizState> {
       isAnswered: false,
       isQuizCompleted: false,
       isEnglishToTurkish: englishToTurkish,
-      isDailyQuiz: isDailyQuiz,
       quizTitle: title,
       results: [],
       historyList: state.historyList,
@@ -304,10 +270,7 @@ class QuizController extends StateNotifier<QuizState> {
       );
     } else {
       state = state.copyWith(isQuizCompleted: true);
-      if (!state.isDailyQuiz) {
-        await _saveGeneralQuizHistory();
-      }
-      // Günlük quiz tamamlanınca plan'ın güncellenmesi DailyPlanPage'den yapılacak.
+      await _saveGeneralQuizHistory();
     }
   }
 
@@ -321,7 +284,7 @@ class QuizController extends StateNotifier<QuizState> {
       totalQuestions: state.totalQuestions,
       correctCount: state.correctCount,
       wrongCount: state.wrongCount,
-      isDailyQuiz: false,
+
       results: state.results,
     );
 
@@ -339,7 +302,7 @@ class QuizController extends StateNotifier<QuizState> {
     try {
       final cloudHistory = await _quizRepository.getHistory();
       if (cloudHistory.isNotEmpty) {
-        updatedHistory = cloudHistory.where((h) => !h.isDailyQuiz).toList();
+        updatedHistory = cloudHistory;
       }
     } catch (_) {}
 
@@ -354,7 +317,6 @@ class QuizController extends StateNotifier<QuizState> {
         questionCount: state.questions.length,
         englishToTurkish: state.isEnglishToTurkish,
         title: state.quizTitle,
-        isDailyQuiz: state.isDailyQuiz,
       );
     }
   }
@@ -383,9 +345,9 @@ class QuizController extends StateNotifier<QuizState> {
 
   Future<void> loadInitialData() => loadHistory();
 
-  Future<void> clearHistory({bool isDailyQuiz = false}) async {
+  Future<void> clearHistory() async {
     try {
-      await _quizRepository.clearHistory(isDailyQuiz: isDailyQuiz);
+      await _quizRepository.clearHistory();
     } catch (e) {
       dev.log('QuizController.clearHistory error: $e');
     }
@@ -394,7 +356,7 @@ class QuizController extends StateNotifier<QuizState> {
 
   Future<void> clearGeneralHistory() async {
     try {
-      await _quizRepository.clearHistory(isDailyQuiz: false);
+      await _quizRepository.clearHistory();
     } catch (e) {
       dev.log('QuizController.clearGeneralHistory error: $e');
     }

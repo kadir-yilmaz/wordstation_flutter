@@ -3,7 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../core/theme/app_colors.dart';
-import '../plan/controllers/plan_controller.dart';
+
 import '../quiz/controllers/quiz_controller.dart';
 import '../words/controllers/word_list_controller.dart';
 import '../words/pages/synonyms_page.dart';
@@ -39,10 +39,7 @@ class _MainNavigationShellState extends ConsumerState<MainNavigationShell>
         ref.read(wordListControllerProvider.notifier).loadInitialData();
       }
       ref.read(quizControllerProvider.notifier).loadHistory();
-      final planState = ref.read(planControllerProvider);
-      if (planState.dailyPlan == null && !planState.isPlanLoaded) {
-        ref.read(planControllerProvider.notifier).loadPlanData();
-      }
+      // Daily words doesn't need to load initial list data here, list is selected on the page
     });
   }
 
@@ -159,8 +156,8 @@ class _MainNavigationShellState extends ConsumerState<MainNavigationShell>
                         ),
                         _buildTabItem(
                           index: 3,
-                          icon: Icons.bolt_rounded,
-                          label: 'Plan',
+                          icon: Icons.check_circle_outline,
+                          label: 'Daily Words',
                           activeColor: activeColor,
                           inactiveColor: inactiveColor,
                         ),
@@ -281,8 +278,8 @@ class _MainNavigationShellState extends ConsumerState<MainNavigationShell>
                   const SizedBox(height: 6),
                   _buildSidebarItem(
                     index: 3,
-                    icon: Icons.bolt_rounded,
-                    label: 'Plan',
+                    icon: Icons.check_circle_outline,
+                    label: 'Daily Words',
                     activeColor: activeColor,
                     inactiveColor: inactiveColor,
                     isDark: isDark,

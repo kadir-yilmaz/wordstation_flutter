@@ -16,9 +16,8 @@ abstract class AppRoutes {
   static const String quizStudy = '/quiz/study';
   static const String quizHistory = '/quiz/history';
 
-  static const String plan = '/plan';
-  static const String planStudy = '/plan/study';
-  static const String planHistory = '/plan/history';
+  static const String dailyWords = '/daily-words';
+  static const String dailyWordsStudy = '/daily-words/study';
 
   static const String profile = '/profile';
 

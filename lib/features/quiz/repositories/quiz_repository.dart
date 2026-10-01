@@ -6,7 +6,7 @@ import '../services/quiz_history_api_service.dart';
 abstract interface class IQuizRepository {
   Future<List<QuizHistoryModel>> getHistory();
   Future<QuizHistoryModel?> saveHistory(QuizHistoryModel history);
-  Future<bool> clearHistory({bool? isDailyQuiz});
+  Future<bool> clearHistory();
 }
 
 final quizRepositoryProvider = Provider<IQuizRepository>((ref) {
@@ -31,7 +31,7 @@ class QuizRepositoryImpl implements IQuizRepository {
   }
 
   @override
-  Future<bool> clearHistory({bool? isDailyQuiz}) async {
-    return await historyApiService.clearHistory(isDailyQuiz: isDailyQuiz);
+  Future<bool> clearHistory() async {
+    return await historyApiService.clearHistory();
   }
 }

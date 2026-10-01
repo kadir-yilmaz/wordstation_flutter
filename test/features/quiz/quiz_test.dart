@@ -43,14 +43,13 @@ void main() {
         totalQuestions: 10,
         correctCount: 9,
         wrongCount: 1,
-        isDailyQuiz: false,
         results: [questionResult],
       );
 
       expect(history.percentage, 90);
       final json = history.toJson();
       expect(json['title'], 'Genel Test');
-      expect(json['isDailyQuiz'], isFalse);
+
 
       final parsed = QuizHistoryModel.fromJson(json);
       expect(parsed.score, 90);
@@ -121,23 +120,7 @@ void main() {
       expect(controller.state.score, 0);
     });
 
-    test('startDailyQuiz initializes daily mode and custom title', () {
-      final controller = QuizController(
-        sampleWords,
-        soundService: SoundService(enableAudio: false),
-        quizRepository: _FakeQuizRepository(),
-      );
 
-      controller.startDailyQuiz(
-        words: sampleWords.take(4).toList(),
-        englishToTurkish: true,
-        title: 'Günün Quizi (1. Gün)',
-      );
-
-      expect(controller.state.isDailyQuiz, isTrue);
-      expect(controller.state.quizTitle, 'Günün Quizi (1. Gün)');
-      expect(controller.state.questions.length, 4);
-    });
   });
 
   group('Quiz History API & Repository Integration', () {
@@ -166,7 +149,6 @@ void main() {
                 'totalQuestions': 10,
                 'correctCount': 8,
                 'wrongCount': 2,
-                'isDailyQuiz': false,
                 'results': [],
               }
             ],

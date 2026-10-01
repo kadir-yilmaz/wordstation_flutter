@@ -7,8 +7,8 @@ class WordListCard extends StatelessWidget {
   final int wordCount;
   final List<Color> gradient;
   final VoidCallback onTap;
-  final VoidCallback onRename;
-  final VoidCallback onDelete;
+  final VoidCallback? onRename;
+  final VoidCallback? onDelete;
 
   const WordListCard({
     super.key,
@@ -17,8 +17,8 @@ class WordListCard extends StatelessWidget {
     required this.wordCount,
     required this.gradient,
     required this.onTap,
-    required this.onRename,
-    required this.onDelete,
+    this.onRename,
+    this.onDelete,
   });
 
   @override
@@ -84,66 +84,69 @@ class WordListCard extends StatelessWidget {
                 ),
 
                 // Popup Options Menu
-                PopupMenuButton<String>(
-                  icon: const Icon(
-                    Icons.more_vert_rounded,
-                    color: Colors.white,
-                    size: 22,
-                  ),
-                  color: isDark ? AppColors.darkCardElevated : Colors.white,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(14),
-                    side: isDark
-                        ? const BorderSide(color: AppColors.darkBorder, width: 0.8)
-                        : BorderSide.none,
-                  ),
-                  onSelected: (val) {
-                    if (val == 'rename') onRename();
-                    if (val == 'delete') onDelete();
-                  },
-                  itemBuilder: (ctx) => [
-                    PopupMenuItem(
-                      value: 'rename',
-                      child: Row(
-                        children: [
-                          Icon(
-                            Icons.edit_outlined,
-                            size: 18,
-                            color: isDark ? AppColors.info : AppColors.blue,
-                          ),
-                          const SizedBox(width: 10),
-                          Text(
-                            'Rename List',
-                            style: TextStyle(
-                              color: isDark
-                                  ? AppColors.darkTextPrimary
-                                  : AppColors.lightTextPrimary,
-                            ),
-                          ),
-                        ],
-                      ),
+                if (onRename != null || onDelete != null)
+                  PopupMenuButton<String>(
+                    icon: const Icon(
+                      Icons.more_vert_rounded,
+                      color: Colors.white,
+                      size: 22,
                     ),
-                    const PopupMenuItem(
-                      value: 'delete',
-                      child: Row(
-                        children: [
-                          Icon(
-                            Icons.delete_outline_rounded,
-                            size: 18,
-                            color: AppColors.error,
-                          ),
-                          SizedBox(width: 10),
-                          Text(
-                            'Delete List',
-                            style: TextStyle(
-                              color: AppColors.error,
-                            ),
-                          ),
-                        ],
-                      ),
+                    color: isDark ? AppColors.darkCardElevated : Colors.white,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                      side: isDark
+                          ? const BorderSide(color: AppColors.darkBorder, width: 0.8)
+                          : BorderSide.none,
                     ),
-                  ],
-                ),
+                    onSelected: (val) {
+                      if (val == 'rename' && onRename != null) onRename!();
+                      if (val == 'delete' && onDelete != null) onDelete!();
+                    },
+                    itemBuilder: (ctx) => [
+                      if (onRename != null)
+                        PopupMenuItem(
+                          value: 'rename',
+                          child: Row(
+                            children: [
+                              Icon(
+                                Icons.edit_outlined,
+                                size: 18,
+                                color: isDark ? AppColors.info : AppColors.blue,
+                              ),
+                              const SizedBox(width: 10),
+                              Text(
+                                'Rename List',
+                                style: TextStyle(
+                                  color: isDark
+                                      ? AppColors.darkTextPrimary
+                                      : AppColors.lightTextPrimary,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      if (onDelete != null)
+                        const PopupMenuItem(
+                          value: 'delete',
+                          child: Row(
+                            children: [
+                              Icon(
+                                Icons.delete_outline_rounded,
+                                size: 18,
+                                color: AppColors.error,
+                              ),
+                              SizedBox(width: 10),
+                              Text(
+                                'Delete List',
+                                style: TextStyle(
+                                  color: AppColors.error,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                    ],
+                  ),
 
                 const SizedBox(width: 4),
 

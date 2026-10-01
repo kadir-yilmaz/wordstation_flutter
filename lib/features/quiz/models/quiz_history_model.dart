@@ -53,7 +53,7 @@ class QuizHistoryModel {
   final int totalQuestions;
   final int correctCount;
   final int wrongCount;
-  final bool isDailyQuiz;
+
   final List<QuizQuestionResult> results;
 
   const QuizHistoryModel({
@@ -65,7 +65,7 @@ class QuizHistoryModel {
     required this.totalQuestions,
     required this.correctCount,
     required this.wrongCount,
-    this.isDailyQuiz = false,
+
     required this.results,
   });
 
@@ -81,7 +81,7 @@ class QuizHistoryModel {
         'totalQuestions': totalQuestions,
         'correctCount': correctCount,
         'wrongCount': wrongCount,
-        'isDailyQuiz': isDailyQuiz,
+
         'results': results.map((r) => r.toJson()).toList(),
       };
 
@@ -131,7 +131,7 @@ class QuizHistoryModel {
       totalQuestions: (json['totalQuestions'] ?? json['TotalQuestions'] as num?)?.toInt() ?? 0,
       correctCount: (json['correctCount'] ?? json['CorrectCount'] as num?)?.toInt() ?? 0,
       wrongCount: (json['wrongCount'] ?? json['WrongCount'] as num?)?.toInt() ?? 0,
-      isDailyQuiz: (json['isDailyQuiz'] ?? json['IsDailyQuiz']) == true,
+
       results: parsedResults,
     );
   }

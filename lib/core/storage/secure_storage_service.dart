@@ -3,7 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
-import '../../features/plan/models/daily_quiz_plan_model.dart';
+
 import '../utils/jwt_decoder.dart';
 
 final secureStorageServiceProvider = Provider<SecureStorageService>((ref) {
@@ -203,38 +203,6 @@ class SecureStorageService {
     return ThemeMode.light;
   }
 
-  // Persistent Cache for Daily Quiz Plan
-  Future<void> saveCachedDailyPlan(DailyQuizPlanModel plan) async {
-    try {
-      final jsonStr = jsonEncode(plan.toJson());
-      await _storage.write(key: _keyDailyQuizPlanCache, value: jsonStr);
-    } catch (e) {
-      debugPrint('SecureStorageService.saveCachedDailyPlan error: $e');
-    }
-  }
-
-  Future<DailyQuizPlanModel?> getCachedDailyPlan() async {
-    try {
-      final jsonStr = await _storage.read(key: _keyDailyQuizPlanCache);
-      if (jsonStr != null && jsonStr.isNotEmpty) {
-        final map = jsonDecode(jsonStr);
-        if (map is Map<String, dynamic>) {
-          return DailyQuizPlanModel.fromJson(map);
-        }
-      }
-    } catch (e) {
-      debugPrint('SecureStorageService.getCachedDailyPlan error: $e');
-    }
-    return null;
-  }
-
-  Future<void> clearCachedDailyPlan() async {
-    try {
-      await _storage.delete(key: _keyDailyQuizPlanCache);
-    } catch (e) {
-      debugPrint('SecureStorageService.clearCachedDailyPlan error: $e');
-    }
-  }
 
   // Persistent Custom List Order
   Future<void> saveCustomListOrder(List<String> order) async {

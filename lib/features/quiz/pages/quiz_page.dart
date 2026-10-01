@@ -54,7 +54,7 @@ class _QuizPageState extends ConsumerState<QuizPage> {
 
     // Completed quizzes still keep questions in state, so results must
     // be checked before the in-progress view.
-    if (!quizState.isDailyQuiz && quizState.isQuizCompleted) {
+    if (quizState.isQuizCompleted) {
       return PopScope(
         canPop: false,
         onPopInvokedWithResult: (didPop, _) {
@@ -69,7 +69,7 @@ class _QuizPageState extends ConsumerState<QuizPage> {
       );
     }
 
-    if (!quizState.isDailyQuiz && quizState.questions.isNotEmpty) {
+    if (quizState.questions.isNotEmpty) {
       return PopScope(
         canPop: false,
         onPopInvokedWithResult: (didPop, _) {
@@ -177,7 +177,7 @@ class _QuizPageState extends ConsumerState<QuizPage> {
                   child: _activeTabIndex == 0
                       ? _buildGeneralQuizTab(
                           context, wordListState, quizState, quizNotifier, isDark)
-                      : const QuizHistoryView(isDailyQuiz: false),
+                      : const QuizHistoryView(),
                 ),
               ],
             ),

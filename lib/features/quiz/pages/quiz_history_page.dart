@@ -5,19 +5,16 @@ import 'package:go_router/go_router.dart';
 import '../../../core/router/app_routes.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/widgets/word_detail_bottom_sheet.dart';
-import '../../plan/controllers/plan_controller.dart';
 import '../../words/controllers/word_list_controller.dart';
 import '../../words/models/word_model.dart';
 import '../controllers/quiz_controller.dart';
 import '../models/quiz_history_model.dart';
 
 class QuizHistoryPage extends ConsumerWidget {
-  final bool isDailyQuiz;
   final String title;
 
   const QuizHistoryPage({
     super.key,
-    required this.isDailyQuiz,
     required this.title,
   });
 
@@ -26,24 +23,9 @@ class QuizHistoryPage extends ConsumerWidget {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final quizState = ref.watch(quizControllerProvider);
     final quizNotifier = ref.read(quizControllerProvider.notifier);
-    final planState = ref.watch(planControllerProvider);
-    final planNotifier = ref.read(planControllerProvider.notifier);
     final wordListState = ref.watch(wordListControllerProvider);
 
-    final historyList = isDailyQuiz
-        ? planState.dailyPlanDays.map((d) => QuizHistoryModel(
-            id: d.id.toString(),
-            date: d.completedAt,
-            title: '${d.dayNumber}. Gün',
-            score: d.score,
-            maxScore: d.maxScore,
-            totalQuestions: d.totalQuestions,
-            correctCount: d.correctCount,
-            wrongCount: d.wrongCount,
-            isDailyQuiz: true,
-            results: d.results,
-          )).toList()
-        : quizState.historyList;
+    final historyList = quizState.historyList;
 
     return Scaffold(
       backgroundColor:
@@ -68,7 +50,7 @@ class QuizHistoryPage extends ConsumerWidget {
         ),
         centerTitle: true,
         actions: [
-          if (historyList.isNotEmpty && !isDailyQuiz)
+          if (historyList.isNotEmpty)
             TextButton(
               onPressed: () => _confirmClearHistory(context, quizNotifier),
               child: const Text(
@@ -86,11 +68,7 @@ class QuizHistoryPage extends ConsumerWidget {
         child: RefreshIndicator(
           color: AppColors.turquoise,
           onRefresh: () async {
-            if (isDailyQuiz) {
-              await planNotifier.loadPlanData();
-            } else {
-              await quizNotifier.loadHistory();
-            }
+            await quizNotifier.loadHistory();
           },
           child: historyList.isEmpty
               ? LayoutBuilder(
@@ -126,9 +104,7 @@ class QuizHistoryPage extends ConsumerWidget {
                               ),
                               const SizedBox(height: 6),
                               Text(
-                                isDailyQuiz
-                                    ? 'Günlük quizleri çözdükçe tüm sonuçlarınız ve tekrar çalışmalarınız burada listelenecektir.'
-                                    : 'Genel quizleri çözdükçe tüm test sonuçlarınız burada listelenecektir.',
+                                'Genel quizleri çözdükçe tüm test sonuçlarınız burada listelenecektir.',
                                 textAlign: TextAlign.center,
                                 style: TextStyle(
                                   fontSize: 13,
@@ -175,7 +151,6 @@ class QuizHistoryPage extends ConsumerWidget {
     final dateStr =
         '${entry.date.day.toString().padLeft(2, '0')}.${entry.date.month.toString().padLeft(2, '0')}.${entry.date.year} • ${entry.date.hour.toString().padLeft(2, '0')}:${entry.date.minute.toString().padLeft(2, '0')}';
     final isSuccess = entry.percentage >= 70;
-    final isToday = _isToday(entry.date);
 
     return InkWell(
       onTap: () {
@@ -189,10 +164,8 @@ class QuizHistoryPage extends ConsumerWidget {
           color: isDark ? AppColors.darkSurface : Colors.white,
           borderRadius: BorderRadius.circular(14),
           border: Border.all(
-            color: isToday && isDailyQuiz
-                ? AppColors.turquoise
-                : (isDark ? AppColors.darkBorder : AppColors.lightBorder),
-            width: isToday && isDailyQuiz ? 1.4 : 1,
+            color: isDark ? AppColors.darkBorder : AppColors.lightBorder,
+            width: 1,
           ),
         ),
         child: Row(
@@ -224,25 +197,6 @@ class QuizHistoryPage extends ConsumerWidget {
                 children: [
                   Row(
                     children: [
-                      if (isToday && isDailyQuiz) ...[
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
-                          decoration: BoxDecoration(
-                            color: AppColors.turquoise,
-                            borderRadius: BorderRadius.circular(5),
-                          ),
-                          child: const Text(
-                            'BUGÜN',
-                            style: TextStyle(
-                              fontSize: 9,
-                              fontWeight: FontWeight.w800,
-                              color: Colors.white,
-                              letterSpacing: 0.5,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 6),
-                      ],
                       Flexible(
                         child: Text(
                           entry.title,
@@ -339,20 +293,14 @@ class QuizHistoryPage extends ConsumerWidget {
     );
   }
 
-  bool _isToday(DateTime date) {
-    final now = DateTime.now();
-    return date.year == now.year && date.month == now.month && date.day == now.day;
-  }
 
   Future<void> _confirmClearHistory(BuildContext context, QuizController quizNotifier) async {
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text(isDailyQuiz ? 'Günlük Test Geçmişini Temizle' : 'Genel Quiz Geçmişini Temizle'),
-        content: Text(
-          isDailyQuiz
-              ? 'Tüm günlük test geçmiş kayıtlarınız silinecektir. Emin misiniz?'
-              : 'Tüm genel quiz geçmiş kayıtlarınız silinecektir. Emin misiniz?',
+        title: const Text('Genel Quiz Geçmişini Temizle'),
+        content: const Text(
+          'Tüm genel quiz geçmiş kayıtlarınız silinecektir. Emin misiniz?',
         ),
         actions: [
           TextButton(
@@ -368,11 +316,7 @@ class QuizHistoryPage extends ConsumerWidget {
       ),
     );
     if (confirm == true) {
-      if (isDailyQuiz) {
-        await quizNotifier.clearHistory(isDailyQuiz: true);
-      } else {
-        await quizNotifier.clearGeneralHistory();
-      }
+      await quizNotifier.clearGeneralHistory();
     }
   }
 }

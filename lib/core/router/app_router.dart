@@ -7,7 +7,8 @@ import '../../features/auth/pages/register_page.dart';
 import '../../features/navigation/main_navigation_page.dart';
 import '../../features/profile/pages/profile_page.dart';
 import '../../features/profile/pages/token_inspector_page.dart';
-import '../../features/plan/pages/daily_plan_page.dart';
+import '../../features/daily_words/pages/daily_words_list_page.dart';
+import '../../features/daily_words/pages/daily_words_study_page.dart';
 import '../../features/quiz/pages/quiz_history_page.dart';
 import '../../features/quiz/pages/quiz_page.dart';
 import '../../features/words/pages/add_edit_word_page.dart';
@@ -21,14 +22,14 @@ import 'app_routes.dart';
 final wordsNavKey = GlobalKey<NavigatorState>(debugLabel: 'wordsNav');
 final synonymsNavKey = GlobalKey<NavigatorState>(debugLabel: 'synonymsNav');
 final quizNavKey = GlobalKey<NavigatorState>(debugLabel: 'quizNav');
-final planNavKey = GlobalKey<NavigatorState>(debugLabel: 'planNav');
+final dailyWordsNavKey = GlobalKey<NavigatorState>(debugLabel: 'dailyWordsNav');
 final profileNavKey = GlobalKey<NavigatorState>(debugLabel: 'profileNav');
 
 final branchNavKeys = [
   wordsNavKey,
   synonymsNavKey,
   quizNavKey,
-  planNavKey,
+  dailyWordsNavKey,
   profileNavKey,
 ];
 
@@ -152,7 +153,6 @@ final routerProvider = Provider<GoRouter>((ref) {
                     builder: (context, state) {
                       final extra = state.extra as Map<String, dynamic>? ?? {};
                       return QuizHistoryPage(
-                        isDailyQuiz: (extra['isDailyQuiz'] as bool?) ?? false,
                         title: (extra['title'] as String?) ?? 'Test Geçmişi',
                       );
                     },
@@ -161,29 +161,13 @@ final routerProvider = Provider<GoRouter>((ref) {
               ),
             ],
           ),
-          // Tab 3: Daily Plan
+          // Tab 3: Daily Words
           StatefulShellBranch(
-            navigatorKey: planNavKey,
+            navigatorKey: dailyWordsNavKey,
             routes: [
               GoRoute(
-                path: AppRoutes.plan,
-                builder: (context, state) => const DailyPlanPage(),
-                routes: [
-                  GoRoute(
-                    path: 'study',
-                    builder: (context, state) => _buildStudySessionPage(state),
-                  ),
-                  GoRoute(
-                    path: 'history',
-                    builder: (context, state) {
-                      final extra = state.extra as Map<String, dynamic>? ?? {};
-                      return QuizHistoryPage(
-                        isDailyQuiz: true,
-                        title: (extra['title'] as String?) ?? 'Geçmiş Günler',
-                      );
-                    },
-                  ),
-                ],
+                path: AppRoutes.dailyWords,
+                builder: (context, state) => const DailyWordsStudyPage(listName: ''),
               ),
             ],
           ),
